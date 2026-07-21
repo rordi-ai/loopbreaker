@@ -6,7 +6,7 @@ Loopbreaker is the small public demo extracted from a deeper review-and-shipping
 feature embedded in [Rordi](https://github.com/rordi-ai). It stores an issue's
 acceptance behaviors, attributable evidence, findings, bounded review passes,
 and human waivers in local SQLite; exposes the same substrate to agents through
-MCP; and renders the decision as a plain visual graph.
+MCP; and renders the decision as a live workflow graph.
 
 The hard-won lesson behind it: **review convergence and shipping readiness are
 different facts**. A reviewer can finish checking a repair while a required
@@ -48,6 +48,13 @@ Open <http://127.0.0.1:7331>. The seeded incident starts here:
 Use **Record repair pass**. Review becomes complete, but shipping remains held.
 Then use **Add wired proof**. The behavior becomes verified and the disposition
 changes to ship. The two decisions never overwrite one another.
+
+The graph is inspectable but deliberately read-only: pan, zoom, focus, and
+select nodes to trace the contract, proof, findings, review budget, and ship
+decision. A WebSocket carries changes made by another CLI or MCP process into
+the open graph. If that connection drops, the status badge changes to
+**Polling recovery** and the client keeps converging through interval polling.
+Use `?transport=poll` when you want to exercise that recovery path explicitly.
 
 CLI stdout uses [TOON](https://toonformat.dev/) so agents receive compact,
 regular data. The database defaults to `.loopbreaker/loopbreaker.db`; override
@@ -149,14 +156,19 @@ instead of creating a hidden parallel gate.
 CLI (TOON) ─┐
             ├── domain rules ── SQLite/WAL
 MCP (stdio) ┤        │
-            └── HTTP API ── visual decision view
+            └── HTTP API ── data-version watcher ── WebSocket
+                     │                            │
+                     └──────── React Flow workflow canvas
 ```
 
 The project deliberately uses one domain layer for every interface. The browser
 cannot call a more permissive mutation than the MCP server, and an agent cannot
-manufacture a fourth pass through a lower-level endpoint. The UI is plain HTML,
-CSS, and browser JavaScript served by Node's HTTP module; there is no frontend
-framework or cloud dependency.
+manufacture a fourth pass through a lower-level endpoint. The UI is a Vite-built
+React app using React Flow and small local components adapted from the
+[Vercel AI Elements workflow composition](https://elements.ai-sdk.dev/examples/workflow).
+Node's HTTP module serves the production bundle and upgrades `/events` to a
+WebSocket; SQLite `PRAGMA data_version` detects commits from other local
+processes without introducing a cloud dependency.
 
 ## Commands
 
@@ -183,11 +195,12 @@ idempotent where practical, and return structured errors.
 pnpm verify
 ```
 
-This runs strict TypeScript checking, domain tests, a production build, MCP tool
-discovery against the bundled plugin server, and a real MCP `review_ship_status`
-call. The visual flow is also
-small enough to inspect with any browser automation tool against the local
-server.
+This runs strict TypeScript checking, domain tests, a production frontend and
+server build, plugin validation, MCP tool discovery plus a real
+`review_ship_status` call, and a live-surface check. The live check starts a
+temporary server, mutates its database through a separate built CLI process,
+and requires the matching WebSocket event plus updated API state within two
+seconds.
 
 ## Scope
 

@@ -11,6 +11,7 @@
   },
   "files": [
     "dist",
+    "web-dist",
     "mcp",
     "skills",
     ".codex-plugin",
@@ -19,14 +20,18 @@
     "LICENSE"
   ],
   "scripts": {
-    "build:types": "tsc -p tsconfig.json",
+    "build:types": "node scripts/clean-types.mjs && tsc -p tsconfig.json",
+    "build:web": "vite build --config web/vite.config.ts",
     "build:mcp": "esbuild src/plugin-mcp.ts --bundle --platform=node --format=esm --outfile=mcp/server.bundle.mjs --banner:js='#!/usr/bin/env node'",
-    "build": "pnpm build:types && pnpm build:mcp",
+    "build": "pnpm build:types && pnpm build:web && pnpm build:mcp",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:server": "tsc -p tsconfig.json --noEmit",
+    "typecheck:web": "tsc -p web/tsconfig.json --noEmit",
+    "typecheck": "pnpm typecheck:server && pnpm typecheck:web",
     "verify:mcp": "pnpm build && node scripts/verify-mcp.mjs",
-    "verify": "pnpm typecheck && pnpm test && pnpm build && node scripts/verify-plugin.mjs && node scripts/verify-mcp.mjs",
+    "verify:live": "pnpm build && node scripts/verify-live.mjs",
+    "verify": "pnpm typecheck && pnpm test && pnpm build && node scripts/verify-plugin.mjs && node scripts/verify-mcp.mjs && node scripts/verify-live.mjs",
     "start": "node dist/cli.js"
   },
   "engines": {
@@ -43,13 +48,22 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@toon-format/toon": "^2.3.1",
+    "@xyflow/react": "^12.11.2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "ws": "^8.21.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.19.11",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^6.0.3",
     "esbuild": "^0.28.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
+    "vite": "^8.1.5",
     "vitest": "^3.2.4"
   },
   "packageManager": "pnpm@10.26.2"

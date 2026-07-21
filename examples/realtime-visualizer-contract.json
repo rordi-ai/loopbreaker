@@ -1,0 +1,42 @@
+{
+  "issue_id": "LB-14",
+  "title": "Render the review substrate as a live workflow graph",
+  "description": "Replace the static HTML review layout with a read-only React Flow canvas composed from the Vercel AI Elements workflow primitives. Stream cross-process SQLite changes over WebSocket and retain polling as disconnect recovery. Non-goals: graph editing, collaborative cursors, remote persistence, and replacing the existing domain or MCP authority.",
+  "behaviors": [
+    {
+      "id": "LB-14-B1",
+      "title": "Render one deterministic workflow graph from the complete issue substrate",
+      "trigger": "A builder opens an issue in the visualizer",
+      "expected": "The canvas shows the issue, behaviors, evidence, findings, three review passes, and terminal shipping disposition as connected typed nodes",
+      "verify": "Open a seeded issue in a real browser and inspect the accessible graph for every substrate class and the exact hold disposition"
+    },
+    {
+      "id": "LB-14-B2",
+      "title": "Keep the workflow canvas inspectable but read-only",
+      "trigger": "A builder pans, zooms, selects, or focuses workflow nodes",
+      "expected": "Navigation and detail inspection work without exposing node deletion, arbitrary movement, or connection mutations",
+      "verify": "Exercise canvas controls and keyboard focus in a real browser, then confirm the substrate database is unchanged"
+    },
+    {
+      "id": "LB-14-B3",
+      "title": "Stream cross-process substrate changes to the open graph",
+      "trigger": "A separate CLI or MCP process commits a change to the visualizer's SQLite database",
+      "expected": "The server detects the SQLite version change, broadcasts a WebSocket event, and the open graph updates without manual refresh",
+      "verify": "Keep DEMO-1 open in a real browser, mutate it through a separate built CLI process, and observe the displayed review state change within two seconds"
+    },
+    {
+      "id": "LB-14-B4",
+      "title": "Recover live state through polling when WebSocket is unavailable",
+      "trigger": "The WebSocket disconnects while the visualizer remains open",
+      "expected": "The client shows degraded connection state and interval polling still converges the graph to the latest substrate",
+      "verify": "Block or close the WebSocket, mutate the database through a separate process, and observe the browser update through the polling fallback"
+    },
+    {
+      "id": "LB-14-B5",
+      "title": "Preserve existing Loopbreaker authority and demo actions",
+      "trigger": "A builder records pass two, adds wired proof, or accepts named debt from the new visualizer",
+      "expected": "The existing domain functions remain the only mutation authority and review stays separate from shipping",
+      "verify": "Run the complete repository verification suite and exercise review-complete plus hold followed by wired-proof plus ship in a real browser"
+    }
+  ]
+}
