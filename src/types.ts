@@ -16,6 +16,9 @@ export interface BehaviorRow {
   id: string;
   issue_id: string;
   title: string;
+  trigger: string;
+  expected: string;
+  verify: string;
   status: BehaviorStatus;
   enforced: number;
   ordinal: number;

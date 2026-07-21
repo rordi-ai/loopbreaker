@@ -40,6 +40,9 @@ export class LoopbreakerDb {
         id TEXT PRIMARY KEY,
         issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
         title TEXT NOT NULL,
+        trigger TEXT NOT NULL DEFAULT '',
+        expected TEXT NOT NULL DEFAULT '',
+        verify TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL DEFAULT 'pending'
           CHECK (status IN ('pending', 'verified', 'failed', 'waived')),
         enforced INTEGER NOT NULL DEFAULT 1 CHECK (enforced IN (0, 1)),
@@ -99,6 +102,13 @@ export class LoopbreakerDb {
       CREATE INDEX IF NOT EXISTS idx_findings_issue ON findings(issue_id);
       CREATE INDEX IF NOT EXISTS idx_review_passes_issue ON review_passes(issue_id);
     `);
+
+    const behaviorColumns = new Set(
+      (this.raw.prepare("PRAGMA table_info(behaviors)").all() as Array<{ name: string }>).map((column) => column.name),
+    );
+    for (const column of ["trigger", "expected", "verify"]) {
+      if (!behaviorColumns.has(column)) this.raw.exec(`ALTER TABLE behaviors ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+    }
   }
 
   transaction<T>(fn: () => T): T {

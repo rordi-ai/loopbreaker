@@ -13,6 +13,13 @@ different facts**. A reviewer can finish checking a repair while a required
 behavior still lacks production-relevant proof. Conflating those facts caused
 review loops to grow indefinitely. Loopbreaker makes both states explicit.
 
+It now packages the complete public workflow as four reusable agent skills:
+
+- `shape-strategy` — frame appetite, reversibility, smallest slice, and success.
+- `plan-feature` — freeze enforced behavior children and proportionate proof.
+- `implement-feature` — build only the contract and record attributable evidence.
+- `review-invariants` — run the two-plus-one review and explicit ship decision.
+
 ![Loopbreaker visual decision view](docs/loopbreaker.png)
 
 ## Try the incident
@@ -46,7 +53,22 @@ CLI stdout uses [TOON](https://toonformat.dev/) so agents receive compact,
 regular data. The database defaults to `.loopbreaker/loopbreaker.db`; override
 it with `--db PATH` or `LOOPBREAKER_DB`.
 
-## Use it with an MCP client
+## Install as a Codex plugin
+
+The repository is a complete plugin: [.codex-plugin/plugin.json](.codex-plugin/plugin.json)
+registers the four skills and [.mcp.json](.mcp.json) starts the bundled local MCP
+server. No TypeScript runtime is needed after the repository has been built.
+
+```sh
+pnpm install
+pnpm build
+```
+
+The generated `mcp/server.bundle.mjs` is the plugin entry point. Set
+`LOOPBREAKER_DB` in your MCP environment when you want an explicit database path;
+otherwise the server uses `.loopbreaker/loopbreaker.db` under its working directory.
+
+## Use it with any MCP client
 
 Build the repo, then add this local stdio server to your MCP client config:
 
@@ -67,13 +89,14 @@ Build the repo, then add this local stdio server to your MCP client config:
 ```
 
 The server tells agents to load the substrate before reviewing and to check the
-ship status separately. It exposes eight focused tools:
+ship status separately. It exposes nine focused tools:
 
 | Tool | Purpose |
 | --- | --- |
 | `review_import_contract` | Import behavior children; enforced unless explicitly advisory |
 | `review_list_issues` | List derived review and shipping states |
 | `review_substrate` | Read the complete frozen review surface |
+| `review_upsert_finding` | Preserve one stable row per review root cause |
 | `review_record_pass` | Record the next pass, limited to 1–3 |
 | `review_record_evidence` | Attach unit, wired, or live proof |
 | `review_verify_behavior` | Verify a behavior using attached passing evidence |
@@ -161,7 +184,8 @@ pnpm verify
 ```
 
 This runs strict TypeScript checking, domain tests, a production build, MCP tool
-discovery, and a real MCP `review_ship_status` call. The visual flow is also
+discovery against the bundled plugin server, and a real MCP `review_ship_status`
+call. The visual flow is also
 small enough to inspect with any browser automation tool against the local
 server.
 

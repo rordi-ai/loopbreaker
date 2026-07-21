@@ -9,6 +9,7 @@ import {
   recordEvidence,
   recordPass,
   substrate,
+  upsertFinding,
   verifyBehavior,
 } from "./domain.js";
 import { failure, success } from "./toon.js";
@@ -34,7 +35,7 @@ function toolError(error: unknown) {
 export async function runMcp(dbPath?: string): Promise<void> {
   const db = openDb(dbPath);
   const server = new McpServer(
-    { name: "loopbreaker", version: "0.1.0" },
+    { name: "loopbreaker", version: "0.2.0" },
     {
       instructions:
         "Call review_list_issues, then review_substrate before reviewing. Never create pass 4. Review completion is not shipping readiness: check review_ship_status before recommending shipment.",
@@ -52,6 +53,9 @@ export async function runMcp(dbPath?: string): Promise<void> {
         behaviors: z.array(z.object({
           id: z.string().min(1),
           title: z.string().min(1),
+          trigger: z.string().min(1),
+          expected: z.string().min(1),
+          verify: z.string().min(1),
           advisory: z.boolean().optional(),
         })).min(1),
       },
@@ -91,6 +95,43 @@ export async function runMcp(dbPath?: string): Promise<void> {
     },
     async ({ issue_id }) => {
       try { return content(substrate(db, issue_id), db.path); } catch (error) { return toolError(error); }
+    },
+  );
+
+  server.registerTool(
+    "review_upsert_finding",
+    {
+      description: "Create or update one stable root-cause finding with severity, disposition, blocker-test facts, and optional behavior/pass attribution.",
+      inputSchema: {
+        issue_id: z.string().min(1),
+        finding_id: z.string().min(1),
+        behavior_id: z.string().min(1).optional(),
+        review_pass_number: z.number().int().min(1).max(3).optional(),
+        severity: z.enum(["P0", "P1", "P2", "P3"]),
+        status: z.enum(["open", "repaired", "accepted_debt"]),
+        title: z.string().min(1),
+        reachability: z.string().optional(),
+        impact: z.string().optional(),
+        rollback: z.string().optional(),
+        smallest_fix: z.string().optional(),
+      },
+    },
+    async (input) => {
+      try {
+        return content(upsertFinding(db, {
+          issueId: input.issue_id,
+          findingId: input.finding_id,
+          behaviorId: input.behavior_id,
+          reviewPassNumber: input.review_pass_number,
+          severity: input.severity,
+          status: input.status,
+          title: input.title,
+          reachability: input.reachability,
+          impact: input.impact,
+          rollback: input.rollback,
+          smallestFix: input.smallest_fix,
+        }), db.path);
+      } catch (error) { return toolError(error); }
     },
   );
 

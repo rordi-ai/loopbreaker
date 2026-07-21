@@ -1,0 +1,4 @@
+interface:
+  display_name: "Shape Strategy"
+  short_description: "Frame a bounded product bet before planning"
+  default_prompt: "Use $shape-strategy to shape this idea into a bounded product bet."

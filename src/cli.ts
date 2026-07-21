@@ -35,7 +35,7 @@ Output:
 const COMMAND_HELP: Record<string, string> = {
   init: "loopbreaker init [--db PATH]\n\nCreate the database and schema. Safe to run repeatedly.",
   demo: "loopbreaker demo [--db PATH]\n\nSeed DEMO-1 without replacing existing records. Safe to run repeatedly.",
-  import: "loopbreaker import FILE [--db PATH]\n\nImport JSON shaped as {issue_id,title,description?,behaviors:[{id,title,advisory?}]}. Reviewed contracts are frozen.",
+  import: "loopbreaker import FILE [--db PATH]\n\nImport JSON shaped as {issue_id,title,description?,behaviors:[{id,title,trigger,expected,verify,advisory?}]}. Reviewed contracts are frozen.",
   substrate: "loopbreaker substrate ISSUE [--db PATH]\n\nReturn behaviors, evidence, findings, passes, waivers, and derived ship state.",
   pass: "loopbreaker pass ISSUE --pass 1|2|3 --verdict pass|fail --summary TEXT [--db PATH]\n\nRecord only the next pass. Pass 4 is rejected.",
   evidence: "loopbreaker evidence ISSUE [--behavior ID] --tier unit|wired|live --verdict pass|fail --summary TEXT [--source URI] [--db PATH]",
@@ -149,10 +149,23 @@ async function main(): Promise<void> {
       }
       const behaviors = record.behaviors.map((item) => {
         if (!item || typeof item !== "object") throw new DomainError("invalid_contract", "Each behavior must be an object.");
-        const behavior = item as { id?: unknown; title?: unknown; advisory?: unknown };
-        if (typeof behavior.id !== "string" || typeof behavior.title !== "string") throw new DomainError("invalid_contract", "Each behavior requires string id and title.");
+        const behavior = item as { id?: unknown; title?: unknown; trigger?: unknown; expected?: unknown; verify?: unknown; advisory?: unknown };
+        if (
+          typeof behavior.id !== "string"
+          || typeof behavior.title !== "string"
+          || typeof behavior.trigger !== "string"
+          || typeof behavior.expected !== "string"
+          || typeof behavior.verify !== "string"
+        ) throw new DomainError("invalid_contract", "Each behavior requires string id, title, trigger, expected, and verify.");
         if (behavior.advisory !== undefined && typeof behavior.advisory !== "boolean") throw new DomainError("invalid_contract", "behavior.advisory must be boolean when present.");
-        return { id: behavior.id, title: behavior.title, ...(typeof behavior.advisory === "boolean" ? { advisory: behavior.advisory } : {}) };
+        return {
+          id: behavior.id,
+          title: behavior.title,
+          trigger: behavior.trigger,
+          expected: behavior.expected,
+          verify: behavior.verify,
+          ...(typeof behavior.advisory === "boolean" ? { advisory: behavior.advisory } : {}),
+        };
       });
       output(importContract(db, { issueId: record.issue_id, title: record.title, description: typeof record.description === "string" ? record.description : undefined, behaviors }), db);
       return;

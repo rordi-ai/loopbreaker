@@ -1,6 +1,6 @@
 {
   "name": "loopbreaker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local-first review graph for bounded agent review and explicit shipping decisions.",
   "type": "module",
   "bin": {
@@ -11,16 +11,22 @@
   },
   "files": [
     "dist",
+    "mcp",
+    "skills",
+    ".codex-plugin",
+    ".mcp.json",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build:types": "tsc -p tsconfig.json",
+    "build:mcp": "esbuild src/plugin-mcp.ts --bundle --platform=node --format=esm --outfile=mcp/server.bundle.mjs --banner:js='#!/usr/bin/env node'",
+    "build": "pnpm build:types && pnpm build:mcp",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:mcp": "pnpm build && node scripts/verify-mcp.mjs",
-    "verify": "pnpm typecheck && pnpm test && pnpm build && node scripts/verify-mcp.mjs",
+    "verify": "pnpm typecheck && pnpm test && pnpm build && node scripts/verify-plugin.mjs && node scripts/verify-mcp.mjs",
     "start": "node dist/cli.js"
   },
   "engines": {
@@ -41,6 +47,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.19.11",
+    "esbuild": "^0.28.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

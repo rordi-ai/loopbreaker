@@ -1,0 +1,30 @@
+{
+  "name": "loopbreaker",
+  "version": "0.2.0",
+  "description": "Shape, plan, implement, and review software against a local behavior contract with bounded review and explicit shipping decisions.",
+  "author": {
+    "name": "Rordi",
+    "url": "https://github.com/rordi-ai"
+  },
+  "homepage": "https://github.com/rordi-ai/loopbreaker",
+  "repository": "https://github.com/rordi-ai/loopbreaker",
+  "license": "MIT",
+  "keywords": ["agents", "planning", "mcp", "code-review", "sqlite"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Loopbreaker",
+    "shortDescription": "Bounded agent delivery from shaping through review",
+    "longDescription": "Four reusable delivery skills share one local SQLite and MCP behavior contract, keeping implementation scope frozen, evidence attributable, review bounded, and shipping decisions explicit.",
+    "developerName": "Rordi",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://github.com/rordi-ai/loopbreaker",
+    "defaultPrompt": [
+      "Shape this idea into a bounded product bet",
+      "Plan this feature as an executable behavior contract",
+      "Review this change without starting a review loop"
+    ],
+    "brandColor": "#84D69A"
+  }
+}

@@ -8,7 +8,9 @@ export function seedDemo(db: LoopbreakerDb) {
     db.raw.prepare(`
       INSERT INTO issues (id, title, description)
       VALUES (?, ?, ?)
-      ON CONFLICT(id) DO NOTHING
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        description = excluded.description
     `).run(
       DEMO_ISSUE,
       "Warm follow-up survives acceptance failures",
@@ -16,14 +18,20 @@ export function seedDemo(db: LoopbreakerDb) {
     );
 
     const behavior = db.raw.prepare(`
-      INSERT INTO behaviors (id, issue_id, title, status, enforced, ordinal)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO NOTHING
+      INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        trigger = excluded.trigger,
+        expected = excluded.expected,
+        verify = excluded.verify,
+        enforced = excluded.enforced,
+        ordinal = excluded.ordinal
     `);
-    behavior.run("DEMO-B1", DEMO_ISSUE, "Reuse a live successor after warm handoff", "verified", 1, 1);
-    behavior.run("DEMO-B2", DEMO_ISSUE, "Persist acceptance before the external SDK effect", "verified", 1, 2);
-    behavior.run("DEMO-B3", DEMO_ISSUE, "Redelivery produces the external effect exactly once", "pending", 1, 3);
-    behavior.run("DEMO-B4", DEMO_ISSUE, "Expose operator timing diagnostics", "pending", 0, 4);
+    behavior.run("DEMO-B1", DEMO_ISSUE, "Reuse a live successor after warm handoff", "A follow-up arrives while the successor is live.", "The existing successor handles the follow-up.", "Run a live handoff and observe the same successor session ID.", "verified", 1, 1);
+    behavior.run("DEMO-B2", DEMO_ISSUE, "Persist acceptance before the external SDK effect", "A worker accepts an external-effect request.", "Acceptance is durable before the SDK invocation starts.", "Trace the wired boundary and observe persistence preceding the SDK call.", "verified", 1, 2);
+    behavior.run("DEMO-B3", DEMO_ISSUE, "Redelivery produces the external effect exactly once", "Delivery is replayed after acceptance.", "The external effect occurs exactly once.", "Replay twice through the wired worker and observe one external effect.", "pending", 1, 3);
+    behavior.run("DEMO-B4", DEMO_ISSUE, "Expose operator timing diagnostics", "An operator inspects a retry.", "Timing fields are visible in diagnostics.", "Inspect one structured retry log.", "pending", 0, 4);
 
     const evidence = db.raw.prepare(`
       INSERT INTO evidence (id, issue_id, behavior_id, tier, verdict, summary, source)

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { LoopbreakerDb } from "./db.js";
 import type {
   EvidenceTier,
+  FindingSeverity,
+  FindingStatus,
   ReviewKind,
   ShipState,
   Substrate,
@@ -122,12 +124,15 @@ export function importContract(
     issueId: string;
     title: string;
     description?: string;
-    behaviors: Array<{ id: string; title: string; advisory?: boolean }>;
+    behaviors: Array<{ id: string; title: string; trigger: string; expected: string; verify: string; advisory?: boolean }>;
   },
 ): Substrate {
   if (input.behaviors.length === 0) throw new DomainError("empty_contract", "A ship contract requires at least one behavior child.");
   if (new Set(input.behaviors.map((behavior) => behavior.id)).size !== input.behaviors.length) {
     throw new DomainError("duplicate_behavior", "Behavior IDs must be unique within the contract.");
+  }
+  if (input.behaviors.some((behavior) => [behavior.id, behavior.title, behavior.trigger, behavior.expected, behavior.verify].some((value) => !value.trim()))) {
+    throw new DomainError("incomplete_behavior", "Every behavior requires non-empty id, title, trigger, expected, and verify fields.");
   }
 
   return db.transaction(() => {
@@ -136,7 +141,13 @@ export function importContract(
       const current = db.behaviors(input.issueId);
       const unchanged = current.length === input.behaviors.length && current.every((behavior, index) => {
         const incoming = input.behaviors[index];
-        return incoming && behavior.id === incoming.id && behavior.title === incoming.title && behavior.enforced === (incoming.advisory ? 0 : 1);
+        return incoming
+          && behavior.id === incoming.id
+          && behavior.title === incoming.title
+          && behavior.trigger === incoming.trigger
+          && behavior.expected === incoming.expected
+          && behavior.verify === incoming.verify
+          && behavior.enforced === (incoming.advisory ? 0 : 1);
       });
       if (!unchanged) {
         throw new DomainError(
@@ -155,11 +166,20 @@ export function importContract(
     if (!existing || db.reviewPasses(input.issueId).length === 0) {
       db.raw.prepare("DELETE FROM behaviors WHERE issue_id = ?").run(input.issueId);
       const statement = db.raw.prepare(`
-        INSERT INTO behaviors (id, issue_id, title, status, enforced, ordinal)
-        VALUES (?, ?, ?, 'pending', ?, ?)
+        INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
       `);
       input.behaviors.forEach((behavior, index) => {
-        statement.run(behavior.id, input.issueId, behavior.title, behavior.advisory ? 0 : 1, index + 1);
+        statement.run(
+          behavior.id,
+          input.issueId,
+          behavior.title,
+          behavior.trigger,
+          behavior.expected,
+          behavior.verify,
+          behavior.advisory ? 0 : 1,
+          index + 1,
+        );
       });
     }
     return substrate(db, input.issueId);
@@ -190,6 +210,77 @@ export function recordPass(
     INSERT INTO review_passes (id, issue_id, pass_number, kind, verdict, summary)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(randomUUID(), input.issueId, input.passNumber, reviewKind(input.passNumber), input.verdict, input.summary);
+  return substrate(db, input.issueId);
+}
+
+export function upsertFinding(
+  db: LoopbreakerDb,
+  input: {
+    issueId: string;
+    findingId: string;
+    behaviorId?: string;
+    reviewPassNumber?: number;
+    severity: FindingSeverity;
+    status: FindingStatus;
+    title: string;
+    reachability?: string;
+    impact?: string;
+    rollback?: string;
+    smallestFix?: string;
+  },
+): Substrate {
+  const current = substrate(db, input.issueId);
+  if (input.behaviorId && !current.behaviors.some((behavior) => behavior.id === input.behaviorId)) {
+    throw new DomainError("behavior_not_found", `Behavior ${input.behaviorId} is not a child of ${input.issueId}.`);
+  }
+  if (input.severity === "P1" && input.status === "open") {
+    const blockerFacts = [input.behaviorId, input.reachability, input.impact, input.rollback, input.smallestFix];
+    if (blockerFacts.some((value) => !value?.trim())) {
+      throw new DomainError(
+        "incomplete_blocker_test",
+        "An open P1 requires behavior attribution, reachability, impact, rollback, and smallest fix.",
+        "Record an incomplete concern as non-blocking debt or supply the complete four-part blocker test.",
+      );
+    }
+  }
+  const existing = db.raw.prepare("SELECT issue_id FROM findings WHERE id = ?").get(input.findingId) as { issue_id: string } | undefined;
+  if (existing && existing.issue_id !== input.issueId) {
+    throw new DomainError("finding_conflict", `Finding ${input.findingId} already belongs to ${existing.issue_id}.`);
+  }
+  let reviewPassId: string | null = null;
+  if (input.reviewPassNumber !== undefined) {
+    const pass = current.review_passes.find((item) => item.pass_number === input.reviewPassNumber);
+    if (!pass) throw new DomainError("review_pass_not_found", `Pass ${input.reviewPassNumber} has not been recorded for ${input.issueId}.`);
+    reviewPassId = pass.id;
+  }
+  db.raw.prepare(`
+    INSERT INTO findings (
+      id, issue_id, review_pass_id, behavior_id, severity, status, title,
+      blocker_reachability, blocker_impact, blocker_rollback, smallest_fix
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      review_pass_id = COALESCE(excluded.review_pass_id, findings.review_pass_id),
+      behavior_id = COALESCE(excluded.behavior_id, findings.behavior_id),
+      severity = excluded.severity,
+      status = excluded.status,
+      title = excluded.title,
+      blocker_reachability = excluded.blocker_reachability,
+      blocker_impact = excluded.blocker_impact,
+      blocker_rollback = excluded.blocker_rollback,
+      smallest_fix = excluded.smallest_fix
+  `).run(
+    input.findingId,
+    input.issueId,
+    reviewPassId,
+    input.behaviorId ?? null,
+    input.severity,
+    input.status,
+    input.title,
+    input.reachability ?? null,
+    input.impact ?? null,
+    input.rollback ?? null,
+    input.smallestFix ?? null,
+  );
   return substrate(db, input.issueId);
 }
 

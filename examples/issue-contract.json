@@ -5,15 +5,24 @@
   "behaviors": [
     {
       "id": "APP-42-B1",
-      "title": "Persist acceptance before invoking the external effect"
+      "title": "Persist acceptance before invoking the external effect",
+      "trigger": "A worker accepts an external-effect request",
+      "expected": "Acceptance is durable before the external call starts",
+      "verify": "Trace one wired request and observe persistence before invocation"
     },
     {
       "id": "APP-42-B2",
-      "title": "A replay produces the external effect exactly once"
+      "title": "A replay produces the external effect exactly once",
+      "trigger": "The accepted delivery is replayed",
+      "expected": "The external effect occurs exactly once",
+      "verify": "Replay twice through the wired worker and observe one effect"
     },
     {
       "id": "APP-42-B3",
       "title": "Show operator timing diagnostics",
+      "trigger": "An operator inspects a retry",
+      "expected": "Timing fields are visible in structured diagnostics",
+      "verify": "Inspect one retry log and observe the timing fields",
       "advisory": true
     }
   ]

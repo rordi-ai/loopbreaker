@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Feature"
+  short_description: "Freeze behaviors and implementation work"
+  default_prompt: "Use $plan-feature to turn this shaped slice into an executable behavior contract."
