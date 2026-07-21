@@ -6,6 +6,7 @@ import type {
   EvidenceRow,
   FindingRow,
   IssueRow,
+  PlanningProfile,
   ReviewPassRow,
   WaiverRow,
 } from "./types.js";
@@ -97,6 +98,12 @@ export class LoopbreakerDb {
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS planning_profiles (
+        issue_id TEXT PRIMARY KEY REFERENCES issues(id) ON DELETE CASCADE,
+        profile_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE INDEX IF NOT EXISTS idx_behaviors_issue ON behaviors(issue_id);
       CREATE INDEX IF NOT EXISTS idx_evidence_issue ON evidence(issue_id);
       CREATE INDEX IF NOT EXISTS idx_findings_issue ON findings(issue_id);
@@ -149,6 +156,18 @@ export class LoopbreakerDb {
 
   waivers(issueId: string): WaiverRow[] {
     return this.raw.prepare("SELECT * FROM waivers WHERE issue_id = ? ORDER BY created_at, id").all(issueId) as unknown as WaiverRow[];
+  }
+
+  planningProfile(issueId: string): PlanningProfile | null {
+    const row = this.raw.prepare("SELECT profile_json FROM planning_profiles WHERE issue_id = ?").get(issueId) as { profile_json: string } | undefined;
+    return row ? JSON.parse(row.profile_json) as PlanningProfile : null;
+  }
+
+  setPlanningProfile(issueId: string, profile: PlanningProfile): void {
+    this.raw.prepare(`
+      INSERT INTO planning_profiles (issue_id, profile_json) VALUES (?, ?)
+      ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
+    `).run(issueId, JSON.stringify(profile));
   }
 }
 

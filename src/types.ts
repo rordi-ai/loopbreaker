@@ -4,6 +4,54 @@ export type Verdict = "pass" | "fail";
 export type ReviewKind = "comprehensive" | "repair_verification" | "decision";
 export type FindingSeverity = "P0" | "P1" | "P2" | "P3";
 export type FindingStatus = "open" | "repaired" | "accepted_debt";
+export type PlanningDimensionKey = "scope" | "contract" | "traceability" | "proof" | "operability";
+
+export interface PlanningWorkUnit {
+  id: string;
+  title: string;
+  behavior_ids: string[];
+  done_when: string;
+}
+
+export interface PlanningProof {
+  behavior_id: string;
+  tier: EvidenceTier;
+  method: string;
+}
+
+export interface PlanningRisk {
+  risk: string;
+  mitigation: string;
+}
+
+export interface PlanningProfile {
+  outcome?: string;
+  appetite?: string;
+  non_goals?: string[];
+  work_units?: PlanningWorkUnit[];
+  proofs?: PlanningProof[];
+  production_wiring?: string;
+  rollback?: string;
+  migration?: string;
+  decision_owner?: string;
+  risks?: PlanningRisk[];
+}
+
+export interface PlanningHealth {
+  score: number;
+  threshold: 80;
+  ready: boolean;
+  grade: "healthy" | "at_risk" | "blocked";
+  dimensions: Array<{
+    key: PlanningDimensionKey;
+    score: number;
+    max_score: number;
+    status: "pass" | "partial" | "fail";
+  }>;
+  blockers: Array<{ code: string; message: string }>;
+  recommendations: string[];
+  profile: PlanningProfile | null;
+}
 
 export interface IssueRow {
   id: string;
@@ -87,6 +135,8 @@ export interface ShipState {
   verified_total: number;
   waived_total: number;
   unresolved_behavior_ids: string[];
+  gate: "planning" | "verification" | "ready";
+  planning_score: number;
 }
 
 export interface Substrate {
@@ -95,6 +145,7 @@ export interface Substrate {
     frozen_to_behavior_children: true;
     enforced_by_default: true;
   };
+  planning: PlanningHealth;
   behaviors: Array<BehaviorRow & { evidence_ids: string[]; waiver_id: string | null }>;
   evidence: EvidenceRow[];
   findings: FindingRow[];

@@ -1,0 +1,92 @@
+{
+  "issue_id": "LB-15",
+  "title": "Gate delivery on deterministic planning health",
+  "description": "Add an explainable planning assessment before review and shipping. A score summarizes quality, but zero named blockers is independently required. Non-goals: AI-judged prose quality, replacing behavior verification, or letting a high average waive a missing production or rollback plan.",
+  "behaviors": [
+    {
+      "id": "LB-15-B1",
+      "title": "Evaluate planning health deterministically",
+      "trigger": "A builder records or reads an issue planning profile",
+      "expected": "Loopbreaker returns a stable 0-100 score, five dimension scores, named hard blockers, recommendations, and an explicit ready flag",
+      "verify": "Run the evaluator repeatedly against healthy and incomplete fixtures and observe identical scores plus exact blocker codes"
+    },
+    {
+      "id": "LB-15-B2",
+      "title": "Apply planning readiness before review and shipping",
+      "trigger": "An issue has missing planning blockers or a planning score below threshold",
+      "expected": "Pass one is rejected and shipping remains held by planning even when execution evidence is otherwise complete; a healthy plan releases only the planning gate",
+      "verify": "Exercise an incomplete plan through the domain API, then repair it and observe the gate move from planning to verification without prematurely shipping"
+    },
+    {
+      "id": "LB-15-B3",
+      "title": "Expose ergonomic planning tools to builders and agents",
+      "trigger": "A builder uses the CLI or an agent uses MCP",
+      "expected": "Both surfaces can record a partial plan and read compact planning health with actionable blocker details",
+      "verify": "Run the built CLI against a JSON plan and complete a real MCP handshake that discovers and calls both planning tools"
+    },
+    {
+      "id": "LB-15-B4",
+      "title": "Visualize planning health in the workflow graph",
+      "trigger": "A builder opens an issue with any planning state",
+      "expected": "The live graph shows planning score, readiness, dimensions, and blockers upstream of behavior verification and the terminal ship decision",
+      "verify": "Open healthy and blocked issues in a real browser and inspect the accessible planning node and ordered gate state"
+    },
+    {
+      "id": "LB-15-B5",
+      "title": "Preserve existing review and migration semantics",
+      "trigger": "An existing database migrates or a planned issue completes review and verification",
+      "expected": "Existing data migrates safely, the two-plus-one review limit remains intact, and a healthy fully verified issue still reaches ship",
+      "verify": "Run the complete repository suite, migration fixture, package check, and one live healthy issue from import through ship"
+    }
+  ],
+  "planning": {
+    "outcome": "Builders and agents can tell whether an issue is sufficiently planned before implementation, review, or shipment.",
+    "appetite": "One focused implementation slice with schema migration, CLI, MCP, graph, and live proof.",
+    "non_goals": [
+      "AI-scored writing style",
+      "Replacing behavior verification",
+      "Allowing score averages to waive hard blockers"
+    ],
+    "work_units": [
+      {
+        "id": "planning-domain",
+        "title": "Persist and score planning profiles",
+        "behavior_ids": ["LB-15-B1", "LB-15-B2", "LB-15-B5"],
+        "done_when": "Health is deterministic and both review and shipping consult it."
+      },
+      {
+        "id": "planning-surfaces",
+        "title": "Add CLI and MCP planning tools",
+        "behavior_ids": ["LB-15-B3"],
+        "done_when": "Builders and agents receive compact TOON health output."
+      },
+      {
+        "id": "planning-graph",
+        "title": "Render planning readiness upstream of delivery",
+        "behavior_ids": ["LB-15-B4"],
+        "done_when": "The browser exposes score, dimensions, blockers, and gate order."
+      }
+    ],
+    "proofs": [
+      { "behavior_id": "LB-15-B1", "tier": "wired", "method": "Exercise the persisted evaluator through domain tests and built CLI." },
+      { "behavior_id": "LB-15-B2", "tier": "wired", "method": "Drive planning hold, verification hold, and ship in one real database." },
+      { "behavior_id": "LB-15-B3", "tier": "live", "method": "Call both planning tools through a real MCP client/server handshake." },
+      { "behavior_id": "LB-15-B4", "tier": "live", "method": "Inspect healthy and blocked planning nodes with agent-browser." },
+      { "behavior_id": "LB-15-B5", "tier": "wired", "method": "Run migration, bounded-review, full verification, and package checks." }
+    ],
+    "production_wiring": "The SQLite-backed domain evaluator feeds substrate, pass admission, shipping, CLI, MCP, HTTP, WebSocket refresh, and React Flow graph construction.",
+    "rollback": "Remove planning enforcement from pass admission and shipping while retaining stored profiles; the existing verification gate remains intact.",
+    "migration": "Create planning_profiles idempotently; existing issues become explicitly planning-blocked until a profile is recorded.",
+    "decision_owner": "Issue owner or human approver",
+    "risks": [
+      {
+        "risk": "A scalar score hides a critical omission.",
+        "mitigation": "Named hard blockers are conjunctive and cannot be averaged away."
+      },
+      {
+        "risk": "Legacy issues unexpectedly appear ready.",
+        "mitigation": "Missing profiles are explicitly blocked rather than silently grandfathered."
+      }
+    ]
+  }
+}

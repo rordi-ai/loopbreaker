@@ -49,12 +49,30 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
     handles: { target: false, source: true },
   }));
 
+  const planningTone = substrate.planning.ready ? "green" : substrate.planning.score >= substrate.planning.threshold ? "amber" : "red";
+  nodes.push(node("planning", 430, centerY, {
+    kind: "planning",
+    eyebrow: "planning gate",
+    title: `${substrate.planning.score}/100 · ${substrate.planning.grade.replaceAll("_", " ")}`,
+    status: substrate.planning.ready ? "ready" : "blocked",
+    tone: planningTone,
+    lines: substrate.planning.dimensions.map((dimension) => ({
+      label: dimension.key,
+      value: `${dimension.score}/${dimension.max_score} · ${dimension.status}`,
+    })),
+    footer: substrate.planning.blockers.length
+      ? `Blockers: ${substrate.planning.blockers.map((blocker) => blocker.code).join(", ")}`
+      : "Zero hard blockers · verification gate may proceed",
+    handles: { target: true, source: true },
+  }));
+  edges.push(edge("issue:planning", "issue", "planning", { tone: planningTone, dashed: !substrate.planning.ready, animated: !substrate.planning.ready }));
+
   substrate.behaviors.forEach((behavior, index) => {
     const y = index * BEHAVIOR_GAP;
     behaviorY.set(behavior.id, y);
     const tone = behavior.status === "verified" ? "green" : behavior.status === "waived" ? "amber" : behavior.status === "failed" ? "red" : "neutral";
     const behaviorNodeId = `behavior:${behavior.id}`;
-    nodes.push(node(behaviorNodeId, 430, y, {
+    nodes.push(node(behaviorNodeId, 860, y, {
       kind: "behavior",
       eyebrow: `${behavior.id} · ${behavior.enforced ? "enforced" : "advisory"}`,
       title: behavior.title,
@@ -68,7 +86,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
       footer: `${behavior.evidence_ids.length} evidence · ${behavior.waiver_id ? "waiver attached" : "no waiver"}`,
       handles: { target: true, source: true },
     }));
-    edges.push(edge(`issue:${behavior.id}`, "issue", behaviorNodeId, { tone: "blue", animated: behavior.status === "pending" }));
+    edges.push(edge(`planning:${behavior.id}`, "planning", behaviorNodeId, { tone: substrate.planning.ready ? "blue" : "red", dashed: !substrate.planning.ready, animated: behavior.status === "pending" }));
   });
 
   const evidenceOffset = new Map<string, number>();
@@ -78,7 +96,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
     evidenceOffset.set(key, offset + 1);
     const y = item.behavior_id ? (behaviorY.get(item.behavior_id) ?? index * 160) + offset * 150 : centerY + index * 150;
     const evidenceId = `evidence:${item.id}`;
-    nodes.push(node(evidenceId, 860, y, {
+    nodes.push(node(evidenceId, 1290, y, {
       kind: "evidence",
       eyebrow: `${item.tier} proof · ${item.id}`,
       title: item.summary,
@@ -88,7 +106,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
       footer: item.behavior_id ?? "issue-level evidence",
       handles: { target: true, source: true },
     }));
-    edges.push(edge(`evidence-link:${item.id}`, item.behavior_id ? `behavior:${item.behavior_id}` : "issue", evidenceId, {
+    edges.push(edge(`evidence-link:${item.id}`, item.behavior_id ? `behavior:${item.behavior_id}` : "planning", evidenceId, {
       tone: item.verdict === "pass" ? "green" : "red",
       animated: item.tier === "wired" || item.tier === "live",
       label: item.tier,
@@ -103,7 +121,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
     const y = finding.behavior_id ? (behaviorY.get(finding.behavior_id) ?? index * 180) + 115 + offset * 170 : centerY + 180 + index * 170;
     const findingId = `finding:${finding.id}`;
     const tone = finding.status === "repaired" ? "green" : finding.status === "accepted_debt" ? "amber" : "red";
-    nodes.push(node(findingId, 1280, y, {
+    nodes.push(node(findingId, 1710, y, {
       kind: "finding",
       eyebrow: `${finding.severity} finding · ${finding.id}`,
       title: finding.title,
@@ -117,7 +135,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
       footer: finding.blocker_rollback ? `Rollback: ${finding.blocker_rollback}` : "No rollback recorded",
       handles: { target: true, source: true },
     }));
-    edges.push(edge(`finding-link:${finding.id}`, finding.behavior_id ? `behavior:${finding.behavior_id}` : "issue", findingId, {
+    edges.push(edge(`finding-link:${finding.id}`, finding.behavior_id ? `behavior:${finding.behavior_id}` : "planning", findingId, {
       tone,
       dashed: finding.status !== "open",
       label: finding.severity,
@@ -125,7 +143,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
   });
 
   const decisionTone = substrate.shipping.disposition === "ship" ? "green" : substrate.shipping.disposition === "ship_with_debt" ? "amber" : "red";
-  nodes.push(node("decision", 1710, centerY, {
+  nodes.push(node("decision", 2140, centerY, {
     kind: "decision",
     eyebrow: "shipping authority",
     title: substrate.shipping.disposition.replaceAll("_", " "),
@@ -133,6 +151,8 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
     tone: decisionTone,
     lines: [
       { label: "REVIEW", value: substrate.review.complete ? "complete" : `next: ${substrate.review.next_action.replaceAll("_", " ")}` },
+      { label: "ACTIVE GATE", value: substrate.shipping.gate },
+      { label: "PLANNING", value: `${substrate.planning.score}/100 · ${substrate.planning.ready ? "ready" : "blocked"}` },
       { label: "VERIFIED", value: `${substrate.shipping.verified_total}/${substrate.shipping.enforced_total}` },
       { label: "WAIVED", value: String(substrate.shipping.waived_total) },
     ],
@@ -155,7 +175,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
     const pass = substrate.review_passes.find((item) => item.pass_number === passNumber);
     const passId = `pass:${passNumber}`;
     const kind = ["comprehensive", "repair verification", "decision only"][passNumber - 1] ?? "review";
-    nodes.push(node(passId, 430 + (passNumber - 1) * 430, passY, {
+    nodes.push(node(passId, 860 + (passNumber - 1) * 430, passY, {
       kind: "pass",
       eyebrow: `bounded review · pass ${passNumber}`,
       title: pass ? pass.kind.replaceAll("_", " ") : kind,
@@ -166,7 +186,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
       handles: { target: true, source: true },
     }));
   });
-  edges.push(edge("review:issue-pass1", "issue", "pass:1", { tone: "blue", dashed: substrate.review_passes.length === 0 }));
+  edges.push(edge("review:planning-pass1", "planning", "pass:1", { tone: substrate.planning.ready ? "blue" : "red", dashed: substrate.review_passes.length === 0 }));
   edges.push(edge("review:pass1-pass2", "pass:1", "pass:2", { tone: "blue", dashed: substrate.review_passes.length < 2 }));
   edges.push(edge("review:pass2-pass3", "pass:2", "pass:3", { tone: "blue", dashed: substrate.review_passes.length < 3 }));
   edges.push(edge("review:pass3-decision", "pass:3", "decision", { tone: decisionTone, dashed: !substrate.review.complete }));

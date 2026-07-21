@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { DomainError, recordEvidence, recordPass, substrate, verifyBehavior, createWaiver, importContract } from "./domain.js";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
+import { DomainError, planningHealth, recordEvidence, recordPass, recordPlanning, substrate, verifyBehavior, createWaiver, importContract } from "./domain.js";
 import { openDb, type LoopbreakerDb } from "./db.js";
+import type { PlanningHealth, PlanningProfile } from "./types.js";
 import { runMcp } from "./mcp.js";
 import { DEMO_ISSUE, seedDemo } from "./seed.js";
 import { startServer } from "./server.js";
@@ -16,6 +19,8 @@ Usage:
   loopbreaker init [--db PATH]                 Initialize an empty SQLite database
   loopbreaker demo [--db PATH]                 Seed the idempotent demo incident
   loopbreaker import FILE [--db PATH]          Import a JSON issue behavior contract
+  loopbreaker plan ISSUE FILE [--db PATH]      Record or replace the pre-review planning profile
+  loopbreaker health ISSUE [--db PATH]         Show compact planning health and blockers
   loopbreaker substrate ISSUE [--db PATH]      Show the full review substrate
   loopbreaker pass ISSUE --pass N --verdict V --summary TEXT
   loopbreaker evidence ISSUE --behavior ID --tier T --verdict V --summary TEXT [--source URI]
@@ -35,7 +40,9 @@ Output:
 const COMMAND_HELP: Record<string, string> = {
   init: "loopbreaker init [--db PATH]\n\nCreate the database and schema. Safe to run repeatedly.",
   demo: "loopbreaker demo [--db PATH]\n\nSeed DEMO-1 without replacing existing records. Safe to run repeatedly.",
-  import: "loopbreaker import FILE [--db PATH]\n\nImport JSON shaped as {issue_id,title,description?,behaviors:[{id,title,trigger,expected,verify,advisory?}]}. Reviewed contracts are frozen.",
+  import: "loopbreaker import FILE [--db PATH]\n\nImport JSON shaped as {issue_id,title,description?,behaviors:[...],planning?}. Reviewed contracts and planning are frozen.",
+  plan: "loopbreaker plan ISSUE FILE [--db PATH]\n\nRecord a partial or complete planning profile before pass one. Returns deterministic health and named blockers.",
+  health: "loopbreaker health ISSUE [--db PATH]\n\nReturn score, dimensions, blockers, and readiness without the full planning profile.",
   substrate: "loopbreaker substrate ISSUE [--db PATH]\n\nReturn behaviors, evidence, findings, passes, waivers, and derived ship state.",
   pass: "loopbreaker pass ISSUE --pass 1|2|3 --verdict pass|fail --summary TEXT [--db PATH]\n\nRecord only the next pass. Pass 4 is rejected.",
   evidence: "loopbreaker evidence ISSUE [--behavior ID] --tier unit|wired|live --verdict pass|fail --summary TEXT [--source URI] [--db PATH]",
@@ -82,11 +89,76 @@ function oneOf<T extends string>(value: string, allowed: readonly T[], label: st
   return value as T;
 }
 
+function planningFromUnknown(value: unknown): PlanningProfile {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new DomainError("invalid_plan", "Planning profile must be a JSON object.");
+  const input = value as Record<string, unknown>;
+  const allowed = new Set(["outcome", "appetite", "non_goals", "work_units", "proofs", "production_wiring", "rollback", "migration", "decision_owner", "risks"]);
+  const unknown = Object.keys(input).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) throw new DomainError("invalid_plan", `Unknown planning fields: ${unknown.join(", ")}.`);
+  const profile: PlanningProfile = {};
+  for (const key of ["outcome", "appetite", "production_wiring", "rollback", "migration", "decision_owner"] as const) {
+    if (input[key] !== undefined) {
+      if (typeof input[key] !== "string") throw new DomainError("invalid_plan", `${key} must be a string.`);
+      profile[key] = input[key];
+    }
+  }
+  if (input.non_goals !== undefined) {
+    if (!Array.isArray(input.non_goals) || input.non_goals.some((item) => typeof item !== "string")) throw new DomainError("invalid_plan", "non_goals must be an array of strings.");
+    profile.non_goals = input.non_goals;
+  }
+  if (input.work_units !== undefined) {
+    if (!Array.isArray(input.work_units)) throw new DomainError("invalid_plan", "work_units must be an array.");
+    profile.work_units = input.work_units.map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) throw new DomainError("invalid_plan", "Each work unit must be an object.");
+      const unit = item as Record<string, unknown>;
+      if (typeof unit.id !== "string" || typeof unit.title !== "string" || typeof unit.done_when !== "string" || !Array.isArray(unit.behavior_ids) || unit.behavior_ids.some((id) => typeof id !== "string")) {
+        throw new DomainError("invalid_plan", "Each work unit requires string id, title, done_when, and string[] behavior_ids.");
+      }
+      return { id: unit.id, title: unit.title, done_when: unit.done_when, behavior_ids: unit.behavior_ids as string[] };
+    });
+  }
+  if (input.proofs !== undefined) {
+    if (!Array.isArray(input.proofs)) throw new DomainError("invalid_plan", "proofs must be an array.");
+    profile.proofs = input.proofs.map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) throw new DomainError("invalid_plan", "Each proof must be an object.");
+      const proof = item as Record<string, unknown>;
+      if (typeof proof.behavior_id !== "string" || typeof proof.method !== "string" || !["unit", "wired", "live"].includes(String(proof.tier))) {
+        throw new DomainError("invalid_plan", "Each proof requires behavior_id, method, and tier unit|wired|live.");
+      }
+      return { behavior_id: proof.behavior_id, method: proof.method, tier: proof.tier as "unit" | "wired" | "live" };
+    });
+  }
+  if (input.risks !== undefined) {
+    if (!Array.isArray(input.risks)) throw new DomainError("invalid_plan", "risks must be an array.");
+    profile.risks = input.risks.map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) throw new DomainError("invalid_plan", "Each risk must be an object.");
+      const risk = item as Record<string, unknown>;
+      if (typeof risk.risk !== "string" || typeof risk.mitigation !== "string") throw new DomainError("invalid_plan", "Each risk requires string risk and mitigation.");
+      return { risk: risk.risk, mitigation: risk.mitigation };
+    });
+  }
+  return profile;
+}
+
+function planningSummary(health: PlanningHealth) {
+  return {
+    score: health.score,
+    threshold: health.threshold,
+    grade: health.grade,
+    ready: health.ready,
+    profile_recorded: health.profile !== null,
+    dimensions: health.dimensions,
+    blockers: health.blockers,
+    recommendations: health.recommendations,
+  };
+}
+
 function dashboard(db: LoopbreakerDb) {
   const issues = db.listIssues();
+  const executablePath = resolve(process.argv[1] ?? "loopbreaker");
   const result: Record<string, unknown> = {
-    executable: "loopbreaker",
-    description: "Local review graph with bounded passes and explicit ship decisions.",
+    bin: executablePath.startsWith(`${homedir()}/`) ? `~/${executablePath.slice(homedir().length + 1)}` : executablePath,
+    description: "Evaluate planning health, bound review, and derive explicit ship decisions.",
     issue_count: issues.length,
     issues: issues.map((issue) => {
       const state = substrate(db, issue.id);
@@ -95,6 +167,7 @@ function dashboard(db: LoopbreakerDb) {
         title: issue.title,
         review: state.review.complete ? "complete" : state.review.next_action,
         shipping: state.shipping.disposition,
+        planning: `${state.planning.score}/100 ${state.planning.ready ? "ready" : "blocked"}`,
         unresolved_behaviors: state.shipping.unresolved_behavior_ids.length,
       };
     }),
@@ -143,7 +216,7 @@ async function main(): Promise<void> {
       try { value = JSON.parse(readFileSync(file, "utf8")); }
       catch (error) { throw new DomainError("invalid_contract_file", `Could not read JSON contract: ${error instanceof Error ? error.message : String(error)}`); }
       if (!value || typeof value !== "object") throw new DomainError("invalid_contract", "Contract JSON must be an object.");
-      const record = value as { issue_id?: unknown; title?: unknown; description?: unknown; behaviors?: unknown };
+      const record = value as { issue_id?: unknown; title?: unknown; description?: unknown; behaviors?: unknown; planning?: unknown };
       if (typeof record.issue_id !== "string" || typeof record.title !== "string" || !Array.isArray(record.behaviors)) {
         throw new DomainError("invalid_contract", "Contract requires string issue_id, string title, and a behaviors array.");
       }
@@ -167,7 +240,31 @@ async function main(): Promise<void> {
           ...(typeof behavior.advisory === "boolean" ? { advisory: behavior.advisory } : {}),
         };
       });
-      output(importContract(db, { issueId: record.issue_id, title: record.title, description: typeof record.description === "string" ? record.description : undefined, behaviors }), db);
+      output(importContract(db, {
+        issueId: record.issue_id,
+        title: record.title,
+        description: typeof record.description === "string" ? record.description : undefined,
+        behaviors,
+        planning: record.planning === undefined ? undefined : planningFromUnknown(record.planning),
+      }), db);
+      return;
+    }
+    if (command === "plan") {
+      const issueId = positional[1];
+      const file = positional[2];
+      if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
+      if (!file) throw new DomainError("missing_file", "A planning JSON file is required.");
+      let value: unknown;
+      try { value = JSON.parse(readFileSync(file, "utf8")); }
+      catch (error) { throw new DomainError("invalid_plan_file", `Could not read planning JSON: ${error instanceof Error ? error.message : String(error)}`); }
+      const embedded = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>).planning : undefined;
+      output(planningSummary(recordPlanning(db, issueId, planningFromUnknown(embedded ?? value))), db, [`loopbreaker health ${issueId}`]);
+      return;
+    }
+    if (command === "health") {
+      const issueId = positional[1];
+      if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
+      output(planningSummary(planningHealth(db, issueId)), db);
       return;
     }
     if (command === "substrate") {
@@ -236,5 +333,5 @@ async function main(): Promise<void> {
 main().catch((error) => {
   const known = error instanceof DomainError;
   process.stdout.write(`${failure(known ? error.code : "internal_error", error instanceof Error ? error.message : String(error), known ? error.hint : undefined)}\n`);
-  process.exitCode = known && ["missing_flag", "missing_issue", "missing_behavior", "missing_file", "invalid_value", "unknown_command", "invalid_port", "invalid_contract_file", "invalid_contract"].includes(error.code) ? 2 : 1;
+  process.exitCode = known && ["missing_flag", "missing_issue", "missing_behavior", "missing_file", "invalid_value", "unknown_command", "invalid_port", "invalid_contract_file", "invalid_contract", "invalid_plan_file", "invalid_plan"].includes(error.code) ? 2 : 1;
 });

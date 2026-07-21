@@ -1,6 +1,6 @@
 ---
 name: plan-feature
-description: Turn a shaped product slice into a frozen, executable feature contract backed by Loopbreaker. Use when scope is agreed and a builder needs concrete behavior children, verification at the right layer, implementation work units, dependencies, non-goals, and an imported review substrate before coding begins.
+description: Turn a shaped product slice into a frozen, executable feature contract and healthy planning profile backed by Loopbreaker. Use when scope is agreed and a builder needs behavior children, work-unit traceability, proportionate proof plans, production wiring, rollback, deterministic planning health, and an imported substrate before coding begins.
 ---
 
 # Plan Feature
@@ -35,8 +35,15 @@ use `$shape-strategy` instead of planning competing interpretations.
 5. Derive small work units and genuine dependencies. Map every work unit to one or
    more behavior IDs and every behavior to at least one work unit.
 6. Identify production construction/wiring, rollback, and migration work explicitly.
-7. Import the contract with `review_import_contract`. Read it back with
-   `review_substrate` and confirm `enforced_by_default: true` before implementation.
+7. Build the planning profile: outcome, appetite, non-goals, behavior-mapped work
+   units, one planned proof per enforced behavior, production wiring, rollback,
+   migration, decision owner, and risks with mitigations.
+8. Import the contract and profile with `review_import_contract`, or update the
+   pre-review profile with `planning_record`. Call `planning_health` and repair every
+   named blocker. Do not start implementation unless `ready: true`; a score of 80+
+   cannot average away a hard blocker.
+9. Read `review_substrate` and confirm `enforced_by_default: true` plus the persisted
+   planning score before implementation.
 
 Do not add requirements from a parent bet after the behavior surface is frozen.
 If a new requirement is real, re-scope explicitly into a new issue or revise the
@@ -66,7 +73,27 @@ Call `review_import_contract` with:
       "expected": "The external effect occurs exactly once",
       "verify": "Replay twice through the wired worker and observe one effect"
     }
-  ]
+  ],
+  "planning": {
+    "outcome": "One retry produces one effect",
+    "appetite": "One focused delivery slice",
+    "non_goals": ["Redesign the external SDK"],
+    "work_units": [{
+      "id": "wired-retry",
+      "title": "Wire durable replay protection",
+      "behavior_ids": ["APP-42-B1", "APP-42-B2"],
+      "done_when": "Both behaviors have wired proof"
+    }],
+    "proofs": [
+      { "behavior_id": "APP-42-B1", "tier": "wired", "method": "Trace persistence before invocation" },
+      { "behavior_id": "APP-42-B2", "tier": "live", "method": "Replay twice and observe one effect" }
+    ],
+    "production_wiring": "Construct through the production worker entry point",
+    "rollback": "Disable replay reuse and return to the cold path",
+    "migration": "No stored-data migration",
+    "decision_owner": "Issue owner",
+    "risks": []
+  }
 }
 ```
 
@@ -80,3 +107,4 @@ Lead with the frozen contract and include:
 4. Non-goals and explicit deferrals.
 5. Literal verification commands or UI actions.
 6. The `review_substrate` result confirming the imported contract.
+7. The `planning_health` score, five dimensions, zero blockers, and `ready: true`.

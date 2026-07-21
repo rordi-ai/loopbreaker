@@ -1,6 +1,6 @@
 ---
 name: review-invariants
-description: Perform bounded invariant and contract-driven code review using the Loopbreaker substrate. Use for a first review, repair re-review, review-finding validation, production-wiring checks, ship decisions, or any review at risk of scope expansion, repeated fixes, pass-four behavior, or conflict between review completion and shipping readiness.
+description: Perform planning-gated, bounded invariant and contract-driven code review using the Loopbreaker substrate. Use for a first review, repair re-review, planning-health preflight, review-finding validation, production-wiring checks, ship decisions, or any review at risk of scope expansion, repeated fixes, pass-four behavior, or conflict between review completion and shipping readiness.
 ---
 
 # Review Invariants
@@ -12,9 +12,10 @@ gate.
 
 ## Non-negotiable state authority
 
-Every response MUST start with two separate lines:
+Every response MUST start with three separate lines:
 
 ```text
+Planning: <exact persisted score and readiness>
 Review: <current or proposed review result>
 Shipping: <exact persisted disposition> [state unchanged when not persisted]
 ```
@@ -32,7 +33,8 @@ reviewing.
 ## Preflight
 
 1. Resolve the issue and exact artifact: working diff, commit range, or PR.
-2. Call `review_substrate` before reading the change.
+2. Call `planning_health`, then `review_substrate`, before reading the change.
+   Do not start pass one unless planning is ready; return its named blockers instead.
 3. Treat behavior children as the frozen acceptance surface. Parent context may
    interpret them but cannot add requirements.
 4. Read `review.next_action`; never choose a pass from intuition.
@@ -82,7 +84,7 @@ Use state words literally:
 
 ## Output
 
-Use the mandatory two-line state header above even when tools are unavailable.
+Use the mandatory three-line state header above even when tools are unavailable.
 
 Then provide the behavior alignment matrix, admitted root-cause findings,
 non-blocking debt, exact remaining proof, and next allowed action. End when no

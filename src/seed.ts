@@ -33,6 +33,28 @@ export function seedDemo(db: LoopbreakerDb) {
     behavior.run("DEMO-B3", DEMO_ISSUE, "Redelivery produces the external effect exactly once", "Delivery is replayed after acceptance.", "The external effect occurs exactly once.", "Replay twice through the wired worker and observe one external effect.", "pending", 1, 3);
     behavior.run("DEMO-B4", DEMO_ISSUE, "Expose operator timing diagnostics", "An operator inspects a retry.", "Timing fields are visible in diagnostics.", "Inspect one structured retry log.", "pending", 0, 4);
 
+    db.setPlanningProfile(DEMO_ISSUE, {
+      outcome: "A warm follow-up remains correct across acceptance and replay boundaries.",
+      appetite: "One bounded exact-once repair slice.",
+      non_goals: ["Redesigning the external SDK"],
+      work_units: [{
+        id: "exact-once-boundary",
+        title: "Wire durable acceptance and replay protection",
+        behavior_ids: ["DEMO-B1", "DEMO-B2", "DEMO-B3", "DEMO-B4"],
+        done_when: "Warm reuse is live, acceptance precedes effects, and replay is exact once.",
+      }],
+      proofs: [
+        { behavior_id: "DEMO-B1", tier: "live", method: "Observe one live successor reuse." },
+        { behavior_id: "DEMO-B2", tier: "wired", method: "Trace persistence before SDK invocation." },
+        { behavior_id: "DEMO-B3", tier: "wired", method: "Replay twice and observe one external effect." },
+      ],
+      production_wiring: "The worker persistence boundary and SDK adapter carry the exact-once key.",
+      rollback: "Disable warm reuse and return to the cold path.",
+      migration: "No data migration; add the idempotency key on new deliveries.",
+      decision_owner: "Demo operator",
+      risks: [{ risk: "The SDK may ignore idempotency.", mitigation: "Retain the cold-path rollback." }],
+    });
+
     const evidence = db.raw.prepare(`
       INSERT INTO evidence (id, issue_id, behavior_id, tier, verdict, summary, source)
       VALUES (?, ?, ?, ?, ?, ?, ?)

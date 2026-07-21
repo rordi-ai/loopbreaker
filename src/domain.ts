@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { LoopbreakerDb } from "./db.js";
 import type {
   EvidenceTier,
   FindingSeverity,
   FindingStatus,
+  PlanningHealth,
+  PlanningProfile,
   ReviewKind,
   ShipState,
   Substrate,
@@ -33,6 +36,106 @@ function reviewKind(passNumber: number): ReviewKind {
   return kind;
 }
 
+const PLANNING_THRESHOLD = 80 as const;
+
+function present(value: string | undefined): boolean {
+  return Boolean(value?.trim());
+}
+
+export function planningHealth(db: LoopbreakerDb, issueId: string): PlanningHealth {
+  const issue = db.issue(issueId);
+  if (!issue) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Run loopbreaker to list issues.");
+  const behaviors = db.behaviors(issueId);
+  const enforced = behaviors.filter((behavior) => behavior.enforced === 1);
+  const profile = db.planningProfile(issueId);
+  const workUnits = profile?.work_units ?? [];
+  const proofs = profile?.proofs ?? [];
+  const knownBehaviorIds = new Set(behaviors.map((behavior) => behavior.id));
+  const enforcedIds = new Set(enforced.map((behavior) => behavior.id));
+  const referencedIds = new Set(workUnits.flatMap((unit) => unit.behavior_ids));
+  const proofIds = new Set(proofs.map((proof) => proof.behavior_id));
+  const invalidReferences = [
+    ...workUnits.flatMap((unit) => unit.behavior_ids),
+    ...proofs.map((proof) => proof.behavior_id),
+  ].filter((id) => !knownBehaviorIds.has(id));
+  const invalidWorkReferences = workUnits.flatMap((unit) => unit.behavior_ids).filter((id) => !knownBehaviorIds.has(id));
+  const unitOnly = proofs.filter((proof) => enforcedIds.has(proof.behavior_id) && proof.tier === "unit");
+  const enforcedProofs = proofs.filter((proof) => enforcedIds.has(proof.behavior_id));
+  const duplicateWorkUnitIds = workUnits.length > 0 && new Set(workUnits.map((unit) => unit.id)).size !== workUnits.length;
+  const unmitigatedRisks = profile?.risks?.filter((risk) => present(risk.risk) && !present(risk.mitigation)) ?? [];
+
+  const scopeScore = (present(profile?.outcome) ? 8 : 0)
+    + (present(profile?.appetite) ? 6 : 0)
+    + ((profile?.non_goals?.length ?? 0) > 0 ? 6 : 0);
+  const contractScore = (behaviors.length > 0 ? 4 : 0)
+    + (enforced.length > 0 ? 4 : 0)
+    + (behaviors.every((behavior) => present(behavior.title)) ? 3 : 0)
+    + (behaviors.every((behavior) => present(behavior.trigger)) ? 3 : 0)
+    + (behaviors.every((behavior) => present(behavior.expected)) ? 3 : 0)
+    + (behaviors.every((behavior) => present(behavior.verify)) ? 3 : 0);
+  const traceabilityScore = (workUnits.length > 0 ? 4 : 0)
+    + (workUnits.length > 0 && new Set(workUnits.map((unit) => unit.id)).size === workUnits.length && workUnits.every((unit) => present(unit.id)) ? 4 : 0)
+    + (workUnits.length > 0 && invalidWorkReferences.length === 0 ? 4 : 0)
+    + (enforced.every((behavior) => referencedIds.has(behavior.id)) ? 6 : 0)
+    + (workUnits.length > 0 && workUnits.every((unit) => present(unit.title) && present(unit.done_when)) ? 2 : 0);
+  const proofScore = (proofs.length > 0 ? 4 : 0)
+    + (proofs.length > 0 && proofs.every((proof) => knownBehaviorIds.has(proof.behavior_id)) ? 3 : 0)
+    + (enforced.every((behavior) => proofIds.has(behavior.id)) ? 6 : 0)
+    + (enforcedProofs.length > 0 && unitOnly.length === 0 && enforcedProofs.every((proof) => proof.tier === "wired" || proof.tier === "live") ? 4 : 0)
+    + (proofs.length > 0 && proofs.every((proof) => present(proof.method)) ? 3 : 0);
+  const operabilityScore = (present(profile?.production_wiring) ? 5 : 0)
+    + (present(profile?.rollback) ? 5 : 0)
+    + (present(profile?.migration) ? 3 : 0)
+    + (present(profile?.decision_owner) ? 3 : 0)
+    + (Array.isArray(profile?.risks) && profile.risks.every((risk) => present(risk.risk) && present(risk.mitigation)) ? 4 : 0);
+
+  const dimensions: PlanningHealth["dimensions"] = [
+    { key: "scope", score: scopeScore, max_score: 20, status: scopeScore === 20 ? "pass" : scopeScore === 0 ? "fail" : "partial" },
+    { key: "contract", score: contractScore, max_score: 20, status: contractScore === 20 ? "pass" : contractScore === 0 ? "fail" : "partial" },
+    { key: "traceability", score: traceabilityScore, max_score: 20, status: traceabilityScore === 20 ? "pass" : traceabilityScore === 0 ? "fail" : "partial" },
+    { key: "proof", score: proofScore, max_score: 20, status: proofScore === 20 ? "pass" : proofScore === 0 ? "fail" : "partial" },
+    { key: "operability", score: operabilityScore, max_score: 20, status: operabilityScore === 20 ? "pass" : operabilityScore === 0 ? "fail" : "partial" },
+  ];
+  const score = dimensions.reduce((total, dimension) => total + dimension.score, 0);
+  const blockers: PlanningHealth["blockers"] = [];
+  if (!profile) blockers.push({ code: "missing_plan", message: "No planning profile is recorded." });
+  if (enforced.length === 0) blockers.push({ code: "missing_enforced_behavior", message: "The contract has no enforced behavior." });
+  const unmapped = enforced.filter((behavior) => !referencedIds.has(behavior.id)).map((behavior) => behavior.id);
+  if (unmapped.length > 0) blockers.push({ code: "unmapped_behavior", message: `Enforced behaviors lack work-unit ownership: ${unmapped.join(", ")}.` });
+  const unproved = enforced.filter((behavior) => !proofIds.has(behavior.id)).map((behavior) => behavior.id);
+  if (unproved.length > 0) blockers.push({ code: "missing_proof", message: `Enforced behaviors lack planned proof: ${unproved.join(", ")}.` });
+  if (unitOnly.length > 0) blockers.push({ code: "unit_only_proof", message: `Enforced behaviors plan only unit proof: ${unitOnly.map((proof) => proof.behavior_id).join(", ")}.` });
+  if (invalidReferences.length > 0) blockers.push({ code: "invalid_behavior_reference", message: `Plan references unknown behaviors: ${[...new Set(invalidReferences)].join(", ")}.` });
+  if (duplicateWorkUnitIds) blockers.push({ code: "duplicate_work_unit", message: "Work-unit IDs must be unique." });
+  if (unmitigatedRisks.length > 0) blockers.push({ code: "unmitigated_risk", message: "Every named planning risk requires a mitigation." });
+  if (!present(profile?.production_wiring)) blockers.push({ code: "missing_production_wiring", message: "Production construction and wiring are not described." });
+  if (!present(profile?.rollback)) blockers.push({ code: "missing_rollback", message: "Rollback or safe disablement is not described." });
+  if (score < PLANNING_THRESHOLD) blockers.push({ code: "score_below_threshold", message: `Planning health ${score}/100 is below ${PLANNING_THRESHOLD}.` });
+  const ready = blockers.length === 0;
+
+  return {
+    score,
+    threshold: PLANNING_THRESHOLD,
+    ready,
+    grade: ready ? "healthy" : score >= PLANNING_THRESHOLD ? "at_risk" : "blocked",
+    dimensions,
+    blockers,
+    recommendations: blockers.map((blocker) => blocker.message),
+    profile,
+  };
+}
+
+export function recordPlanning(db: LoopbreakerDb, issueId: string, profile: PlanningProfile): PlanningHealth {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
+  const current = db.planningProfile(issueId);
+  if (db.reviewPasses(issueId).length > 0 && current !== null) {
+    if (isDeepStrictEqual(current, profile)) return planningHealth(db, issueId);
+    throw new DomainError("plan_frozen", `${issueId} already has review passes; its planning profile cannot change silently.`, "Create a new issue or explicitly re-scope before another review.");
+  }
+  db.setPlanningProfile(issueId, profile);
+  return planningHealth(db, issueId);
+}
+
 export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
   const issue = db.issue(issueId);
   if (!issue) {
@@ -44,6 +147,7 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
   const findings = db.findings(issueId);
   const reviewPasses = db.reviewPasses(issueId);
   const waivers = db.waivers(issueId);
+  const planning = planningHealth(db, issueId);
   const waiverByBehavior = new Map(waivers.map((waiver) => [waiver.behavior_id, waiver.id]));
 
   const enforced = behaviors.filter((behavior) => behavior.enforced === 1);
@@ -53,7 +157,19 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
   const unresolved = enforced.filter((behavior) => !resolved.has(behavior.id));
 
   let shipping: ShipState;
-  if (unresolved.length > 0) {
+  if (!planning.ready) {
+    shipping = {
+      disposition: "hold",
+      ready: false,
+      reason: `Planning health ${planning.score}/100 is not ready: ${planning.blockers.map((blocker) => blocker.code).join(", ")}.`,
+      enforced_total: enforced.length,
+      verified_total: verified.length,
+      waived_total: waived.length,
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      gate: "planning",
+      planning_score: planning.score,
+    };
+  } else if (unresolved.length > 0) {
     shipping = {
       disposition: "hold",
       ready: false,
@@ -62,6 +178,8 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       verified_total: verified.length,
       waived_total: waived.length,
       unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      gate: "verification",
+      planning_score: planning.score,
     };
   } else if (waived.length > 0) {
     shipping = {
@@ -72,6 +190,8 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       verified_total: verified.length,
       waived_total: waived.length,
       unresolved_behavior_ids: [],
+      gate: "ready",
+      planning_score: planning.score,
     };
   } else {
     shipping = {
@@ -82,6 +202,8 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       verified_total: verified.length,
       waived_total: 0,
       unresolved_behavior_ids: [],
+      gate: "ready",
+      planning_score: planning.score,
     };
   }
 
@@ -96,6 +218,7 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       frozen_to_behavior_children: true,
       enforced_by_default: true,
     },
+    planning,
     behaviors: behaviors.map((behavior) => ({
       ...behavior,
       evidence_ids: evidence.filter((item) => item.behavior_id === behavior.id).map((item) => item.id),
@@ -125,6 +248,7 @@ export function importContract(
     title: string;
     description?: string;
     behaviors: Array<{ id: string; title: string; trigger: string; expected: string; verify: string; advisory?: boolean }>;
+    planning?: PlanningProfile;
   },
 ): Substrate {
   if (input.behaviors.length === 0) throw new DomainError("empty_contract", "A ship contract requires at least one behavior child.");
@@ -182,6 +306,13 @@ export function importContract(
         );
       });
     }
+    if (input.planning) {
+      const currentPlan = db.planningProfile(input.issueId);
+      if (db.reviewPasses(input.issueId).length > 0 && currentPlan !== null && !isDeepStrictEqual(currentPlan, input.planning)) {
+        throw new DomainError("plan_frozen", `${input.issueId} already has review passes; its planning profile cannot change silently.`);
+      }
+      db.setPlanningProfile(input.issueId, input.planning);
+    }
     return substrate(db, input.issueId);
   });
 }
@@ -198,6 +329,13 @@ export function recordPass(
   if (existing) {
     if (existing.verdict === input.verdict && existing.summary === input.summary) return current;
     throw new DomainError("pass_conflict", `Pass ${input.passNumber} already has a different result.`);
+  }
+  if (input.passNumber === 1 && !current.planning.ready) {
+    throw new DomainError(
+      "planning_not_ready",
+      `Pass one cannot start while planning health is ${current.planning.score}/100 with ${current.planning.blockers.length} blocker(s).`,
+      `Run loopbreaker health ${input.issueId}, repair the named blockers, then record pass one.`,
+    );
   }
   if (input.passNumber !== current.review.pass_count + 1) {
     throw new DomainError("pass_out_of_order", `Expected pass ${current.review.pass_count + 1}, received pass ${input.passNumber}.`);

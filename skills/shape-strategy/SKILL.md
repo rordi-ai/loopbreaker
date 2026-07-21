@@ -19,6 +19,8 @@ not a feature spec and not a backlog.
    - Cut scope to appetite; do not inflate appetite to fit a solution.
 4. Identify hidden one-way doors: migrations, public APIs, destructive data changes,
    security boundaries, pricing, or external commitments.
+   Name each material risk with a mitigation; an empty risk list must be an explicit
+   conclusion, not an omitted section.
 5. Propose the smallest slice that tests the bet and explicitly name non-goals.
 6. Define a measurable success signal that is stronger than “it shipped.”
 7. Recommend exactly one disposition: `shape`, `spike`, `park`, or `reject`.
@@ -48,6 +50,7 @@ Smallest valuable slice:
 Non-goals:
 Success signal:
 Critical assumptions:
+Risks and mitigations:
 Proposed child slices:
 Decisions still requiring a human:
 ```

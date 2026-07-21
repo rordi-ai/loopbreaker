@@ -63,16 +63,22 @@ After two failed repairs, report:
 A human chooses hold, split/re-scope, or ship with debt. The packet cannot authorize
 another expanding review.
 
-## 7. Make behavior status the shipping authority
+## 7. Make ordered gate state the shipping authority
 
-Call `review_ship_status`. Shipping is:
+Call `planning_health`, then `review_ship_status`. Planning health requires a score
+of at least 80 and zero named blockers. A high average never waives a missing work-
+unit mapping, wired/live proof plan, production wiring, or rollback.
 
-- `ship` when every enforced behavior is verified;
-- `ship_with_debt` when every unverified enforced behavior has an explicit waiver;
-- `hold` otherwise.
+Shipping is evaluated in order:
 
-Review verdicts are evidence supporting those states, never a parallel hidden gate.
-Do not create a waiver on the human's behalf.
+- `hold` at the planning gate when planning is not ready;
+- otherwise `ship` when every enforced behavior is verified;
+- otherwise `ship_with_debt` when every unverified enforced behavior has an explicit waiver;
+- otherwise `hold` at the verification gate.
+
+Planning health and behavior status are explicit persisted authorities. Review
+verdicts are evidence supporting them, never a parallel hidden gate. Do not create a
+waiver on the human's behalf.
 
 ## 8. Keep watchers off by default
 

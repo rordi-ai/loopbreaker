@@ -1,4 +1,4 @@
 interface:
   display_name: "Review Invariants"
-  short_description: "Run bounded contract-driven code review"
-  default_prompt: "Use $review-invariants to review this change without starting an unbounded loop."
+  short_description: "Run planning-gated bounded review"
+  default_prompt: "Use $review-invariants to check planning health and review this change without starting an unbounded loop."

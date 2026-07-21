@@ -1,24 +1,27 @@
 # Loopbreaker
 
-**A local review graph that lets agent review stop without pretending the code is ready to ship.**
+**A local planning and review graph that lets agent review stop without pretending the code is ready to ship.**
 
 Loopbreaker is the small public demo extracted from a deeper review-and-shipping
 feature embedded in [Rordi](https://github.com/rordi-ai). It stores an issue's
-acceptance behaviors, attributable evidence, findings, bounded review passes,
-and human waivers in local SQLite; exposes the same substrate to agents through
-MCP; and renders the decision as a live workflow graph.
+planning health, acceptance behaviors, attributable evidence, findings, bounded
+review passes, and human waivers in local SQLite; exposes the same substrate to
+agents through MCP; and renders the ordered gates as a live workflow graph.
 
 The hard-won lesson behind it: **review convergence and shipping readiness are
 different facts**. A reviewer can finish checking a repair while a required
 behavior still lacks production-relevant proof. Conflating those facts caused
-review loops to grow indefinitely. Loopbreaker makes both states explicit.
+review loops to grow indefinitely. A second lesson followed: a verification gate
+cannot rescue an issue whose scope, work ownership, proof plan, production wiring,
+or rollback was never made explicit. Loopbreaker makes all three states explicit:
+planning readiness, review convergence, and shipping readiness.
 
 It now packages the complete public workflow as four reusable agent skills:
 
 - `shape-strategy` — frame appetite, reversibility, smallest slice, and success.
-- `plan-feature` — freeze enforced behavior children and proportionate proof.
-- `implement-feature` — build only the contract and record attributable evidence.
-- `review-invariants` — run the two-plus-one review and explicit ship decision.
+- `plan-feature` — freeze enforced behaviors and reach healthy planning.
+- `implement-feature` — build only a planning-ready contract and record evidence.
+- `review-invariants` — enforce planning preflight, two-plus-one review, and ship authority.
 
 ![Loopbreaker visual decision view](docs/loopbreaker.png)
 
@@ -41,6 +44,7 @@ node dist/cli.js serve
 Open <http://127.0.0.1:7331>. The seeded incident starts here:
 
 - One comprehensive pass compresses thirteen legacy review iterations.
+- Planning health is 100/100 with zero hard blockers.
 - Two of three enforced behaviors are verified.
 - A unit test exists for the third behavior, but wired replay proof does not.
 - Review's next action is repair verification; shipping is held.
@@ -95,12 +99,14 @@ Build the repo, then add this local stdio server to your MCP client config:
 }
 ```
 
-The server tells agents to load the substrate before reviewing and to check the
-ship status separately. It exposes nine focused tools:
+The server tells agents to check planning health before implementation or review,
+load the substrate, and check ship status separately. It exposes eleven focused tools:
 
 | Tool | Purpose |
 | --- | --- |
 | `review_import_contract` | Import behavior children; enforced unless explicitly advisory |
+| `planning_record` | Record a partial or complete pre-review planning profile |
+| `planning_health` | Read score, five dimensions, blockers, and readiness |
 | `review_list_issues` | List derived review and shipping states |
 | `review_substrate` | Read the complete frozen review surface |
 | `review_upsert_finding` | Preserve one stable row per review root cause |
@@ -122,6 +128,7 @@ Start from [examples/issue-contract.json](examples/issue-contract.json):
 
 ```sh
 node dist/cli.js import examples/issue-contract.json --db my-review.db
+node dist/cli.js health APP-42 --db my-review.db
 node dist/cli.js substrate APP-42 --db my-review.db
 ```
 
@@ -129,6 +136,13 @@ Every behavior is enforced by default. Set `"advisory": true` only when a
 behavior genuinely is not part of the ship gate. Once the first review pass is
 recorded, changing the contract is rejected: parent context can interpret the
 behavior children, but cannot silently add requirements mid-review.
+
+Planning health is deterministic and intentionally conjunctive. The score covers
+scope, contract quality, work-unit traceability, proof design, and operability.
+Readiness requires both a score of at least 80 and zero hard blockers. Missing
+behavior ownership, wired/live proof, production wiring, or rollback cannot be
+averaged away. Partial profiles are accepted so the tool can return actionable
+blockers; `loopbreaker health ISSUE` is the compact preflight surface.
 
 ## The decision model
 
@@ -141,11 +155,12 @@ Review is bounded to a two-plus-one budget:
 There is no automatic pass 4. A passing pass can complete review early. Neither
 case grants permission to ship.
 
-Shipping is derived independently:
+Shipping is derived through ordered authorities:
 
-- `ship`: every enforced behavior is verified.
-- `ship_with_debt`: every unverified enforced behavior has an explicit waiver.
-- `hold`: at least one enforced behavior is neither verified nor waived.
+- planning `hold`: planning health is not ready;
+- verification `hold`: planning is ready but an enforced behavior is unresolved;
+- `ship`: planning is ready and every enforced behavior is verified;
+- `ship_with_debt`: planning is ready and every unverified enforced behavior has an explicit waiver.
 
 This keeps reviewer verdicts as evidence supporting the acceptance contract,
 instead of creating a hidden parallel gate.
@@ -154,7 +169,7 @@ instead of creating a hidden parallel gate.
 
 ```text
 CLI (TOON) ─┐
-            ├── domain rules ── SQLite/WAL
+            ├── planning evaluator + domain rules ── SQLite/WAL
 MCP (stdio) ┤        │
             └── HTTP API ── data-version watcher ── WebSocket
                      │                            │
@@ -177,6 +192,8 @@ loopbreaker                         live issue dashboard
 loopbreaker init                    initialize SQLite
 loopbreaker demo                    seed the synthetic incident
 loopbreaker import FILE             import a behavior contract
+loopbreaker plan ISSUE FILE         record a planning profile
+loopbreaker health ISSUE            inspect compact planning health
 loopbreaker substrate ISSUE         inspect the complete substrate
 loopbreaker pass ISSUE ...          record pass 1, 2, or 3
 loopbreaker evidence ISSUE ...      attach proportionate proof

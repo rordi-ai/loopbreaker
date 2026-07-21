@@ -72,9 +72,12 @@ try {
   const state = await fetch(`${server.url}/api/issues/DEMO-1/substrate`).then((response) => response.json());
   assert.equal(state.review.pass_count, 2);
   assert.equal(state.review.complete, true);
+  assert.equal(state.planning.score, 100);
+  assert.equal(state.planning.ready, true);
+  assert.equal(state.shipping.gate, "verification");
   assert.equal(state.shipping.disposition, "hold", "review completion must not silently authorize shipping");
 
-  process.stdout.write(`Live surface verified: React served; external CLI change reached WebSocket in <=2s; API shows review complete while shipping remains held.\n`);
+  process.stdout.write(`Live surface verified: React served; planning is 100/100; external CLI change reached WebSocket in <=2s; review is complete while verification still holds shipping.\n`);
 } finally {
   socket?.terminate();
   await server.close();

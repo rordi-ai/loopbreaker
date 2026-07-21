@@ -6,12 +6,15 @@ import {
   createWaiver,
   DomainError,
   importContract,
+  planningHealth,
   recordEvidence,
   recordPass,
+  recordPlanning,
   substrate,
   upsertFinding,
   verifyBehavior,
 } from "./domain.js";
+import type { PlanningHealth } from "./types.js";
 import { failure, success } from "./toon.js";
 
 function content(data: unknown, dbPath: string) {
@@ -32,13 +35,48 @@ function toolError(error: unknown) {
   };
 }
 
+const planningSchema = z.object({
+  outcome: z.string().optional(),
+  appetite: z.string().optional(),
+  non_goals: z.array(z.string()).optional(),
+  work_units: z.array(z.object({
+    id: z.string(),
+    title: z.string(),
+    behavior_ids: z.array(z.string()),
+    done_when: z.string(),
+  })).optional(),
+  proofs: z.array(z.object({
+    behavior_id: z.string(),
+    tier: z.enum(["unit", "wired", "live"]),
+    method: z.string(),
+  })).optional(),
+  production_wiring: z.string().optional(),
+  rollback: z.string().optional(),
+  migration: z.string().optional(),
+  decision_owner: z.string().optional(),
+  risks: z.array(z.object({ risk: z.string(), mitigation: z.string() })).optional(),
+});
+
+function planningSummary(health: PlanningHealth) {
+  return {
+    score: health.score,
+    threshold: health.threshold,
+    grade: health.grade,
+    ready: health.ready,
+    profile_recorded: health.profile !== null,
+    dimensions: health.dimensions,
+    blockers: health.blockers,
+    recommendations: health.recommendations,
+  };
+}
+
 export async function runMcp(dbPath?: string): Promise<void> {
   const db = openDb(dbPath);
   const server = new McpServer(
-    { name: "loopbreaker", version: "0.2.0" },
+    { name: "loopbreaker", version: "0.3.0" },
     {
       instructions:
-        "Call review_list_issues, then review_substrate before reviewing. Never create pass 4. Review completion is not shipping readiness: check review_ship_status before recommending shipment.",
+        "Call review_list_issues, planning_health, then review_substrate before implementation or review. Planning must be ready before pass one. Never create pass 4. Review completion is not shipping readiness: check review_ship_status before recommending shipment.",
     },
   );
 
@@ -58,10 +96,11 @@ export async function runMcp(dbPath?: string): Promise<void> {
           verify: z.string().min(1),
           advisory: z.boolean().optional(),
         })).min(1),
+        planning: planningSchema.optional(),
       },
     },
     async (input) => {
-      try { return content(importContract(db, { issueId: input.issue_id, title: input.title, description: input.description, behaviors: input.behaviors }), db.path); }
+      try { return content(importContract(db, { issueId: input.issue_id, title: input.title, description: input.description, behaviors: input.behaviors, planning: input.planning }), db.path); }
       catch (error) { return toolError(error); }
     },
   );
@@ -79,11 +118,40 @@ export async function runMcp(dbPath?: string): Promise<void> {
             review_complete: state.review.complete,
             next_review_action: state.review.next_action,
             ship_disposition: state.shipping.disposition,
+            planning_score: state.planning.score,
+            planning_ready: state.planning.ready,
           };
         }), db.path);
       } catch (error) {
         return toolError(error);
       }
+    },
+  );
+
+  server.registerTool(
+    "planning_record",
+    {
+      description: "Record a partial or complete planning profile before review. Incomplete plans are accepted so named health blockers can guide repair.",
+      inputSchema: {
+        issue_id: z.string().min(1),
+        planning: planningSchema,
+      },
+    },
+    async ({ issue_id, planning }) => {
+      try { return content(planningSummary(recordPlanning(db, issue_id, planning)), db.path); }
+      catch (error) { return toolError(error); }
+    },
+  );
+
+  server.registerTool(
+    "planning_health",
+    {
+      description: "Return deterministic planning score, five dimensions, named hard blockers, and readiness without the full profile.",
+      inputSchema: { issue_id: z.string().min(1) },
+    },
+    async ({ issue_id }) => {
+      try { return content(planningSummary(planningHealth(db, issue_id)), db.path); }
+      catch (error) { return toolError(error); }
     },
   );
 
@@ -203,13 +271,13 @@ export async function runMcp(dbPath?: string): Promise<void> {
   server.registerTool(
     "review_ship_status",
     {
-      description: "Return the authoritative ship disposition derived from enforced behavior verification and waivers.",
+      description: "Return the authoritative ship disposition derived in order from planning readiness, then enforced behavior verification and waivers.",
       inputSchema: { issue_id: z.string().min(1) },
     },
     async ({ issue_id }) => {
       try {
         const state = substrate(db, issue_id);
-        return content({ issue_id, review: state.review, shipping: state.shipping }, db.path);
+        return content({ issue_id, planning: planningSummary(state.planning), review: state.review, shipping: state.shipping }, db.path);
       } catch (error) { return toolError(error); }
     },
   );

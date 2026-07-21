@@ -25,5 +25,29 @@
       "verify": "Inspect one retry log and observe the timing fields",
       "advisory": true
     }
-  ]
+  ],
+  "planning": {
+    "outcome": "A replayed request produces exactly one external effect.",
+    "appetite": "One focused worker-boundary slice.",
+    "non_goals": ["Redesigning the external SDK"],
+    "work_units": [
+      {
+        "id": "exact-once-worker",
+        "title": "Wire durable acceptance and replay protection",
+        "behavior_ids": ["APP-42-B1", "APP-42-B2", "APP-42-B3"],
+        "done_when": "The production worker satisfies the two enforced behaviors and retains diagnostics."
+      }
+    ],
+    "proofs": [
+      { "behavior_id": "APP-42-B1", "tier": "wired", "method": "Trace persistence before the external invocation." },
+      { "behavior_id": "APP-42-B2", "tier": "live", "method": "Replay twice and observe one external effect." }
+    ],
+    "production_wiring": "Construct replay protection in the production worker and external SDK adapter.",
+    "rollback": "Disable replay reuse and return to the cold execution path.",
+    "migration": "No stored-data migration is required.",
+    "decision_owner": "Issue owner",
+    "risks": [
+      { "risk": "The external SDK ignores idempotency keys.", "mitigation": "Retain the cold-path rollback." }
+    ]
+  }
 }

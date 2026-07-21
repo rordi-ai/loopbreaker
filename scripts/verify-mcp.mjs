@@ -13,7 +13,7 @@ const pluginServer = join(root, "mcp", "server.bundle.mjs");
 
 execFileSync(process.execPath, [cli, "demo", "--db", db], { cwd: root, stdio: "ignore" });
 
-const client = new Client({ name: "loopbreaker-verifier", version: "0.2.0" });
+const client = new Client({ name: "loopbreaker-verifier", version: "0.3.0" });
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [pluginServer],
@@ -25,10 +25,25 @@ const transport = new StdioClientTransport({
 try {
   await client.connect(transport);
   const tools = await client.listTools();
-  const required = ["review_list_issues", "review_substrate", "review_upsert_finding", "review_ship_status"];
+  const required = ["planning_record", "planning_health", "review_list_issues", "review_substrate", "review_upsert_finding", "review_ship_status"];
   for (const name of required) {
     if (!tools.tools.some((tool) => tool.name === name)) throw new Error(`Missing MCP tool: ${name}`);
   }
+  await client.callTool({
+    name: "review_import_contract",
+    arguments: {
+      issue_id: "MCP-PLAN",
+      title: "Evaluate one partial plan",
+      description: "MCP planning verification fixture.",
+      behaviors: [{ id: "MCP-PLAN-B1", title: "Expose health", trigger: "A plan is read.", expected: "Health is returned.", verify: "Call the MCP health tool." }],
+    },
+  });
+  const recordedPlan = await client.callTool({ name: "planning_record", arguments: { issue_id: "MCP-PLAN", planning: { outcome: "Expose deterministic health." } } });
+  const recordedText = recordedPlan.content.find((item) => item.type === "text")?.text ?? "";
+  if (!recordedText.includes("ready: false") || !recordedText.includes("missing_proof")) throw new Error("MCP planning_record did not return actionable incomplete health.");
+  const healthResult = await client.callTool({ name: "planning_health", arguments: { issue_id: "MCP-PLAN" } });
+  const healthText = healthResult.content.find((item) => item.type === "text")?.text ?? "";
+  if (!healthText.includes("score:") || !healthText.includes("dimensions[5]")) throw new Error("MCP planning_health did not return five scored dimensions.");
   const finding = await client.callTool({
     name: "review_upsert_finding",
     arguments: {
@@ -48,7 +63,7 @@ try {
   if (!text.includes("disposition: hold") || !text.includes("automatic_pass_four: false")) {
     throw new Error("MCP ship status did not preserve bounded-review and hold state.");
   }
-  process.stdout.write(`MCP verified: ${tools.tools.length} tools; DEMO-1 is held with no pass 4.\n`);
+  process.stdout.write(`MCP verified: ${tools.tools.length} tools; partial planning is blocked; DEMO-1 is verification-held with no pass 4.\n`);
 } finally {
   await client.close();
   rmSync(temp, { recursive: true, force: true });

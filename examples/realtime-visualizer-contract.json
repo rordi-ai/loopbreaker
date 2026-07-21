@@ -38,5 +38,32 @@
       "expected": "The existing domain functions remain the only mutation authority and review stays separate from shipping",
       "verify": "Run the complete repository verification suite and exercise review-complete plus hold followed by wired-proof plus ship in a real browser"
     }
-  ]
+  ],
+  "planning": {
+    "outcome": "Builders can inspect the complete review substrate as a live workflow graph.",
+    "appetite": "One focused visualizer and realtime transport slice.",
+    "non_goals": ["Graph editing", "Remote persistence", "Collaborative cursors"],
+    "work_units": [
+      {
+        "id": "live-visualizer",
+        "title": "Build and wire the realtime workflow canvas",
+        "behavior_ids": ["LB-14-B1", "LB-14-B2", "LB-14-B3", "LB-14-B4", "LB-14-B5"],
+        "done_when": "The production browser renders and refreshes the read-only substrate through both transports."
+      }
+    ],
+    "proofs": [
+      { "behavior_id": "LB-14-B1", "tier": "live", "method": "Inspect the complete accessible graph in a real browser." },
+      { "behavior_id": "LB-14-B2", "tier": "live", "method": "Exercise canvas navigation and compare substrate hashes." },
+      { "behavior_id": "LB-14-B3", "tier": "live", "method": "Mutate with a separate CLI process and observe WebSocket refresh." },
+      { "behavior_id": "LB-14-B4", "tier": "live", "method": "Disconnect the server and observe polling plus reconnect catch-up." },
+      { "behavior_id": "LB-14-B5", "tier": "wired", "method": "Run the full suite and demo hold-to-ship transition." }
+    ],
+    "production_wiring": "Serve the Vite bundle and WebSocket from the production Node HTTP entry point backed by SQLite data-version detection.",
+    "rollback": "Restore the static view while preserving the existing domain, CLI, MCP, and SQLite data.",
+    "migration": "Replace generated web assets; no domain-data migration is required.",
+    "decision_owner": "Issue owner",
+    "risks": [
+      { "risk": "A disconnected client misses an invalidation.", "mitigation": "Reload on reconnect and retain polling recovery." }
+    ]
+  }
 }

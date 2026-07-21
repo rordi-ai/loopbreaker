@@ -1,7 +1,7 @@
 {
   "name": "loopbreaker",
-  "version": "0.2.0",
-  "description": "Local-first review graph for bounded agent review and explicit shipping decisions.",
+  "version": "0.3.0",
+  "description": "Local-first planning health and bounded review graph for explicit shipping decisions.",
   "type": "module",
   "bin": {
     "loopbreaker": "dist/cli.js"

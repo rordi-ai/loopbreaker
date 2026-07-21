@@ -5,10 +5,12 @@ const root = resolve(import.meta.dirname, "..");
 const expectedSkills = ["shape-strategy", "plan-feature", "implement-feature", "review-invariants"];
 const manifest = JSON.parse(readFileSync(resolve(root, ".codex-plugin/plugin.json"), "utf8"));
 const mcp = JSON.parse(readFileSync(resolve(root, ".mcp.json"), "utf8"));
+const packageManifest = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 
 if (manifest.name !== "loopbreaker" || manifest.skills !== "./skills/" || manifest.mcpServers !== "./.mcp.json") {
   throw new Error("Plugin manifest does not register Loopbreaker skills and MCP.");
 }
+if (manifest.version !== packageManifest.version) throw new Error("Plugin and package versions must match.");
 if (mcp.mcpServers?.loopbreaker?.args?.[0] !== "./mcp/server.bundle.mjs") {
   throw new Error("Plugin MCP config does not target the bundled server.");
 }

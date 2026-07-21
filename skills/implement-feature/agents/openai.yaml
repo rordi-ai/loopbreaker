@@ -1,4 +1,4 @@
 interface:
   display_name: "Implement Feature"
-  short_description: "Build from the frozen behavior contract"
-  default_prompt: "Use $implement-feature to implement the current Loopbreaker issue contract."
+  short_description: "Build from a planning-ready contract"
+  default_prompt: "Use $implement-feature to implement the current planning-ready Loopbreaker contract."

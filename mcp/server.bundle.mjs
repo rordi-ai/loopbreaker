@@ -21194,6 +21194,12 @@ var LoopbreakerDb = class {
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS planning_profiles (
+        issue_id TEXT PRIMARY KEY REFERENCES issues(id) ON DELETE CASCADE,
+        profile_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE INDEX IF NOT EXISTS idx_behaviors_issue ON behaviors(issue_id);
       CREATE INDEX IF NOT EXISTS idx_evidence_issue ON evidence(issue_id);
       CREATE INDEX IF NOT EXISTS idx_findings_issue ON findings(issue_id);
@@ -21238,6 +21244,16 @@ var LoopbreakerDb = class {
   waivers(issueId) {
     return this.raw.prepare("SELECT * FROM waivers WHERE issue_id = ? ORDER BY created_at, id").all(issueId);
   }
+  planningProfile(issueId) {
+    const row = this.raw.prepare("SELECT profile_json FROM planning_profiles WHERE issue_id = ?").get(issueId);
+    return row ? JSON.parse(row.profile_json) : null;
+  }
+  setPlanningProfile(issueId, profile) {
+    this.raw.prepare(`
+      INSERT INTO planning_profiles (issue_id, profile_json) VALUES (?, ?)
+      ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
+    `).run(issueId, JSON.stringify(profile));
+  }
 };
 function openDb(path) {
   const db = new LoopbreakerDb(path);
@@ -21247,6 +21263,7 @@ function openDb(path) {
 
 // src/domain.ts
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 var DomainError = class extends Error {
   constructor(code, message, hint) {
     super(message);
@@ -21267,6 +21284,80 @@ function reviewKind(passNumber) {
   if (!kind) throw new DomainError("invalid_pass", "Review passes are limited to 1, 2, and 3.");
   return kind;
 }
+var PLANNING_THRESHOLD = 80;
+function present(value) {
+  return Boolean(value?.trim());
+}
+function planningHealth(db, issueId) {
+  const issue2 = db.issue(issueId);
+  if (!issue2) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Run loopbreaker to list issues.");
+  const behaviors = db.behaviors(issueId);
+  const enforced = behaviors.filter((behavior) => behavior.enforced === 1);
+  const profile = db.planningProfile(issueId);
+  const workUnits = profile?.work_units ?? [];
+  const proofs = profile?.proofs ?? [];
+  const knownBehaviorIds = new Set(behaviors.map((behavior) => behavior.id));
+  const enforcedIds = new Set(enforced.map((behavior) => behavior.id));
+  const referencedIds = new Set(workUnits.flatMap((unit) => unit.behavior_ids));
+  const proofIds = new Set(proofs.map((proof) => proof.behavior_id));
+  const invalidReferences = [
+    ...workUnits.flatMap((unit) => unit.behavior_ids),
+    ...proofs.map((proof) => proof.behavior_id)
+  ].filter((id) => !knownBehaviorIds.has(id));
+  const invalidWorkReferences = workUnits.flatMap((unit) => unit.behavior_ids).filter((id) => !knownBehaviorIds.has(id));
+  const unitOnly = proofs.filter((proof) => enforcedIds.has(proof.behavior_id) && proof.tier === "unit");
+  const enforcedProofs = proofs.filter((proof) => enforcedIds.has(proof.behavior_id));
+  const duplicateWorkUnitIds = workUnits.length > 0 && new Set(workUnits.map((unit) => unit.id)).size !== workUnits.length;
+  const unmitigatedRisks = profile?.risks?.filter((risk) => present(risk.risk) && !present(risk.mitigation)) ?? [];
+  const scopeScore = (present(profile?.outcome) ? 8 : 0) + (present(profile?.appetite) ? 6 : 0) + ((profile?.non_goals?.length ?? 0) > 0 ? 6 : 0);
+  const contractScore = (behaviors.length > 0 ? 4 : 0) + (enforced.length > 0 ? 4 : 0) + (behaviors.every((behavior) => present(behavior.title)) ? 3 : 0) + (behaviors.every((behavior) => present(behavior.trigger)) ? 3 : 0) + (behaviors.every((behavior) => present(behavior.expected)) ? 3 : 0) + (behaviors.every((behavior) => present(behavior.verify)) ? 3 : 0);
+  const traceabilityScore = (workUnits.length > 0 ? 4 : 0) + (workUnits.length > 0 && new Set(workUnits.map((unit) => unit.id)).size === workUnits.length && workUnits.every((unit) => present(unit.id)) ? 4 : 0) + (workUnits.length > 0 && invalidWorkReferences.length === 0 ? 4 : 0) + (enforced.every((behavior) => referencedIds.has(behavior.id)) ? 6 : 0) + (workUnits.length > 0 && workUnits.every((unit) => present(unit.title) && present(unit.done_when)) ? 2 : 0);
+  const proofScore = (proofs.length > 0 ? 4 : 0) + (proofs.length > 0 && proofs.every((proof) => knownBehaviorIds.has(proof.behavior_id)) ? 3 : 0) + (enforced.every((behavior) => proofIds.has(behavior.id)) ? 6 : 0) + (enforcedProofs.length > 0 && unitOnly.length === 0 && enforcedProofs.every((proof) => proof.tier === "wired" || proof.tier === "live") ? 4 : 0) + (proofs.length > 0 && proofs.every((proof) => present(proof.method)) ? 3 : 0);
+  const operabilityScore = (present(profile?.production_wiring) ? 5 : 0) + (present(profile?.rollback) ? 5 : 0) + (present(profile?.migration) ? 3 : 0) + (present(profile?.decision_owner) ? 3 : 0) + (Array.isArray(profile?.risks) && profile.risks.every((risk) => present(risk.risk) && present(risk.mitigation)) ? 4 : 0);
+  const dimensions = [
+    { key: "scope", score: scopeScore, max_score: 20, status: scopeScore === 20 ? "pass" : scopeScore === 0 ? "fail" : "partial" },
+    { key: "contract", score: contractScore, max_score: 20, status: contractScore === 20 ? "pass" : contractScore === 0 ? "fail" : "partial" },
+    { key: "traceability", score: traceabilityScore, max_score: 20, status: traceabilityScore === 20 ? "pass" : traceabilityScore === 0 ? "fail" : "partial" },
+    { key: "proof", score: proofScore, max_score: 20, status: proofScore === 20 ? "pass" : proofScore === 0 ? "fail" : "partial" },
+    { key: "operability", score: operabilityScore, max_score: 20, status: operabilityScore === 20 ? "pass" : operabilityScore === 0 ? "fail" : "partial" }
+  ];
+  const score = dimensions.reduce((total, dimension) => total + dimension.score, 0);
+  const blockers = [];
+  if (!profile) blockers.push({ code: "missing_plan", message: "No planning profile is recorded." });
+  if (enforced.length === 0) blockers.push({ code: "missing_enforced_behavior", message: "The contract has no enforced behavior." });
+  const unmapped = enforced.filter((behavior) => !referencedIds.has(behavior.id)).map((behavior) => behavior.id);
+  if (unmapped.length > 0) blockers.push({ code: "unmapped_behavior", message: `Enforced behaviors lack work-unit ownership: ${unmapped.join(", ")}.` });
+  const unproved = enforced.filter((behavior) => !proofIds.has(behavior.id)).map((behavior) => behavior.id);
+  if (unproved.length > 0) blockers.push({ code: "missing_proof", message: `Enforced behaviors lack planned proof: ${unproved.join(", ")}.` });
+  if (unitOnly.length > 0) blockers.push({ code: "unit_only_proof", message: `Enforced behaviors plan only unit proof: ${unitOnly.map((proof) => proof.behavior_id).join(", ")}.` });
+  if (invalidReferences.length > 0) blockers.push({ code: "invalid_behavior_reference", message: `Plan references unknown behaviors: ${[...new Set(invalidReferences)].join(", ")}.` });
+  if (duplicateWorkUnitIds) blockers.push({ code: "duplicate_work_unit", message: "Work-unit IDs must be unique." });
+  if (unmitigatedRisks.length > 0) blockers.push({ code: "unmitigated_risk", message: "Every named planning risk requires a mitigation." });
+  if (!present(profile?.production_wiring)) blockers.push({ code: "missing_production_wiring", message: "Production construction and wiring are not described." });
+  if (!present(profile?.rollback)) blockers.push({ code: "missing_rollback", message: "Rollback or safe disablement is not described." });
+  if (score < PLANNING_THRESHOLD) blockers.push({ code: "score_below_threshold", message: `Planning health ${score}/100 is below ${PLANNING_THRESHOLD}.` });
+  const ready = blockers.length === 0;
+  return {
+    score,
+    threshold: PLANNING_THRESHOLD,
+    ready,
+    grade: ready ? "healthy" : score >= PLANNING_THRESHOLD ? "at_risk" : "blocked",
+    dimensions,
+    blockers,
+    recommendations: blockers.map((blocker) => blocker.message),
+    profile
+  };
+}
+function recordPlanning(db, issueId, profile) {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
+  const current = db.planningProfile(issueId);
+  if (db.reviewPasses(issueId).length > 0 && current !== null) {
+    if (isDeepStrictEqual(current, profile)) return planningHealth(db, issueId);
+    throw new DomainError("plan_frozen", `${issueId} already has review passes; its planning profile cannot change silently.`, "Create a new issue or explicitly re-scope before another review.");
+  }
+  db.setPlanningProfile(issueId, profile);
+  return planningHealth(db, issueId);
+}
 function substrate(db, issueId) {
   const issue2 = db.issue(issueId);
   if (!issue2) {
@@ -21277,6 +21368,7 @@ function substrate(db, issueId) {
   const findings = db.findings(issueId);
   const reviewPasses = db.reviewPasses(issueId);
   const waivers = db.waivers(issueId);
+  const planning = planningHealth(db, issueId);
   const waiverByBehavior = new Map(waivers.map((waiver) => [waiver.behavior_id, waiver.id]));
   const enforced = behaviors.filter((behavior) => behavior.enforced === 1);
   const verified = enforced.filter((behavior) => behavior.status === "verified");
@@ -21284,7 +21376,19 @@ function substrate(db, issueId) {
   const resolved = new Set([...verified, ...waived].map((behavior) => behavior.id));
   const unresolved = enforced.filter((behavior) => !resolved.has(behavior.id));
   let shipping;
-  if (unresolved.length > 0) {
+  if (!planning.ready) {
+    shipping = {
+      disposition: "hold",
+      ready: false,
+      reason: `Planning health ${planning.score}/100 is not ready: ${planning.blockers.map((blocker) => blocker.code).join(", ")}.`,
+      enforced_total: enforced.length,
+      verified_total: verified.length,
+      waived_total: waived.length,
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      gate: "planning",
+      planning_score: planning.score
+    };
+  } else if (unresolved.length > 0) {
     shipping = {
       disposition: "hold",
       ready: false,
@@ -21292,7 +21396,9 @@ function substrate(db, issueId) {
       enforced_total: enforced.length,
       verified_total: verified.length,
       waived_total: waived.length,
-      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id)
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      gate: "verification",
+      planning_score: planning.score
     };
   } else if (waived.length > 0) {
     shipping = {
@@ -21302,7 +21408,9 @@ function substrate(db, issueId) {
       enforced_total: enforced.length,
       verified_total: verified.length,
       waived_total: waived.length,
-      unresolved_behavior_ids: []
+      unresolved_behavior_ids: [],
+      gate: "ready",
+      planning_score: planning.score
     };
   } else {
     shipping = {
@@ -21312,7 +21420,9 @@ function substrate(db, issueId) {
       enforced_total: enforced.length,
       verified_total: verified.length,
       waived_total: 0,
-      unresolved_behavior_ids: []
+      unresolved_behavior_ids: [],
+      gate: "ready",
+      planning_score: planning.score
     };
   }
   const count = reviewPasses.length;
@@ -21325,6 +21435,7 @@ function substrate(db, issueId) {
       frozen_to_behavior_children: true,
       enforced_by_default: true
     },
+    planning,
     behaviors: behaviors.map((behavior) => ({
       ...behavior,
       evidence_ids: evidence.filter((item) => item.behavior_id === behavior.id).map((item) => item.id),
@@ -21393,6 +21504,13 @@ function importContract(db, input) {
         );
       });
     }
+    if (input.planning) {
+      const currentPlan = db.planningProfile(input.issueId);
+      if (db.reviewPasses(input.issueId).length > 0 && currentPlan !== null && !isDeepStrictEqual(currentPlan, input.planning)) {
+        throw new DomainError("plan_frozen", `${input.issueId} already has review passes; its planning profile cannot change silently.`);
+      }
+      db.setPlanningProfile(input.issueId, input.planning);
+    }
     return substrate(db, input.issueId);
   });
 }
@@ -21405,6 +21523,13 @@ function recordPass(db, input) {
   if (existing) {
     if (existing.verdict === input.verdict && existing.summary === input.summary) return current;
     throw new DomainError("pass_conflict", `Pass ${input.passNumber} already has a different result.`);
+  }
+  if (input.passNumber === 1 && !current.planning.ready) {
+    throw new DomainError(
+      "planning_not_ready",
+      `Pass one cannot start while planning health is ${current.planning.score}/100 with ${current.planning.blockers.length} blocker(s).`,
+      `Run loopbreaker health ${input.issueId}, repair the named blockers, then record pass one.`
+    );
   }
   if (input.passNumber !== current.review.pass_count + 1) {
     throw new DomainError("pass_out_of_order", `Expected pass ${current.review.pass_count + 1}, received pass ${input.passNumber}.`);
@@ -21952,12 +22077,45 @@ function toolError(error2) {
     isError: true
   };
 }
+var planningSchema = external_exports.object({
+  outcome: external_exports.string().optional(),
+  appetite: external_exports.string().optional(),
+  non_goals: external_exports.array(external_exports.string()).optional(),
+  work_units: external_exports.array(external_exports.object({
+    id: external_exports.string(),
+    title: external_exports.string(),
+    behavior_ids: external_exports.array(external_exports.string()),
+    done_when: external_exports.string()
+  })).optional(),
+  proofs: external_exports.array(external_exports.object({
+    behavior_id: external_exports.string(),
+    tier: external_exports.enum(["unit", "wired", "live"]),
+    method: external_exports.string()
+  })).optional(),
+  production_wiring: external_exports.string().optional(),
+  rollback: external_exports.string().optional(),
+  migration: external_exports.string().optional(),
+  decision_owner: external_exports.string().optional(),
+  risks: external_exports.array(external_exports.object({ risk: external_exports.string(), mitigation: external_exports.string() })).optional()
+});
+function planningSummary(health) {
+  return {
+    score: health.score,
+    threshold: health.threshold,
+    grade: health.grade,
+    ready: health.ready,
+    profile_recorded: health.profile !== null,
+    dimensions: health.dimensions,
+    blockers: health.blockers,
+    recommendations: health.recommendations
+  };
+}
 async function runMcp(dbPath) {
   const db = openDb(dbPath);
   const server = new McpServer(
-    { name: "loopbreaker", version: "0.2.0" },
+    { name: "loopbreaker", version: "0.3.0" },
     {
-      instructions: "Call review_list_issues, then review_substrate before reviewing. Never create pass 4. Review completion is not shipping readiness: check review_ship_status before recommending shipment."
+      instructions: "Call review_list_issues, planning_health, then review_substrate before implementation or review. Planning must be ready before pass one. Never create pass 4. Review completion is not shipping readiness: check review_ship_status before recommending shipment."
     }
   );
   server.registerTool(
@@ -21975,12 +22133,13 @@ async function runMcp(dbPath) {
           expected: external_exports.string().min(1),
           verify: external_exports.string().min(1),
           advisory: external_exports.boolean().optional()
-        })).min(1)
+        })).min(1),
+        planning: planningSchema.optional()
       }
     },
     async (input) => {
       try {
-        return content(importContract(db, { issueId: input.issue_id, title: input.title, description: input.description, behaviors: input.behaviors }), db.path);
+        return content(importContract(db, { issueId: input.issue_id, title: input.title, description: input.description, behaviors: input.behaviors, planning: input.planning }), db.path);
       } catch (error2) {
         return toolError(error2);
       }
@@ -21998,9 +22157,42 @@ async function runMcp(dbPath) {
             title: issue2.title,
             review_complete: state.review.complete,
             next_review_action: state.review.next_action,
-            ship_disposition: state.shipping.disposition
+            ship_disposition: state.shipping.disposition,
+            planning_score: state.planning.score,
+            planning_ready: state.planning.ready
           };
         }), db.path);
+      } catch (error2) {
+        return toolError(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "planning_record",
+    {
+      description: "Record a partial or complete planning profile before review. Incomplete plans are accepted so named health blockers can guide repair.",
+      inputSchema: {
+        issue_id: external_exports.string().min(1),
+        planning: planningSchema
+      }
+    },
+    async ({ issue_id, planning }) => {
+      try {
+        return content(planningSummary(recordPlanning(db, issue_id, planning)), db.path);
+      } catch (error2) {
+        return toolError(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "planning_health",
+    {
+      description: "Return deterministic planning score, five dimensions, named hard blockers, and readiness without the full profile.",
+      inputSchema: { issue_id: external_exports.string().min(1) }
+    },
+    async ({ issue_id }) => {
+      try {
+        return content(planningSummary(planningHealth(db, issue_id)), db.path);
       } catch (error2) {
         return toolError(error2);
       }
@@ -22134,13 +22326,13 @@ async function runMcp(dbPath) {
   server.registerTool(
     "review_ship_status",
     {
-      description: "Return the authoritative ship disposition derived from enforced behavior verification and waivers.",
+      description: "Return the authoritative ship disposition derived in order from planning readiness, then enforced behavior verification and waivers.",
       inputSchema: { issue_id: external_exports.string().min(1) }
     },
     async ({ issue_id }) => {
       try {
         const state = substrate(db, issue_id);
-        return content({ issue_id, review: state.review, shipping: state.shipping }, db.path);
+        return content({ issue_id, planning: planningSummary(state.planning), review: state.review, shipping: state.shipping }, db.path);
       } catch (error2) {
         return toolError(error2);
       }
