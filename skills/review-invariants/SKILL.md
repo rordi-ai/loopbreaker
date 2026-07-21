@@ -12,9 +12,11 @@ gate.
 
 ## Non-negotiable state authority
 
-Every response MUST start with three separate lines:
+Every response MUST start with five separate lines:
 
 ```text
+Shape: <exact persisted disposition and readiness>
+Planning review: <exact persisted disposition>
 Planning: <exact persisted score and readiness>
 Review: <current or proposed review result>
 Shipping: <exact persisted disposition> [state unchanged when not persisted]
@@ -33,8 +35,9 @@ reviewing.
 ## Preflight
 
 1. Resolve the issue and exact artifact: working diff, commit range, or PR.
-2. Call `planning_health`, then `review_substrate`, before reading the change.
-   Do not start pass one unless planning is ready; return its named blockers instead.
+2. Call `delivery_readiness`, then `review_substrate`, before reading the change.
+   Do not start pass one unless implementation is admitted by shape, planning health,
+   and planning-review approval; return the exact active gate instead.
 3. Treat behavior children as the frozen acceptance surface. Parent context may
    interpret them but cannot add requirements.
 4. Read `review.next_action`; never choose a pass from intuition.

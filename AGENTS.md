@@ -9,9 +9,10 @@ Before completing a change, run:
 pnpm verify
 ```
 
-This also verifies the four plugin skills, bundled MCP entry point, tool discovery,
-and one real MCP call. When the Codex skill/plugin validators are installed, also
-run their validators against each `skills/*` directory and the repository root.
+This also verifies the five plugin skills, both plugin manifests (Codex and
+Claude Code), the bundled MCP entry point, tool discovery, and one real MCP call.
+When the Codex skill/plugin validators are installed, also run their validators
+against each `skills/*` directory and the repository root.
 
 For the live demo, initialize a disposable database and exercise both surfaces:
 
@@ -25,6 +26,9 @@ The domain rules are non-negotiable:
 
 - Behavior children are enforced by default unless explicitly advisory.
 - An issue's behavior children freeze its acceptance contract.
-- Review has at most three passes: comprehensive, repair verification, decision.
+- Implementation requires shape `proceed`, healthy planning, and independent
+  planning-review approval in that order.
+- Planning review and implementation review each use at most three passes:
+  comprehensive, repair verification, and decision only. Neither has pass four.
 - Review completion and shipping readiness are separate facts.
 - Shipping requires every enforced behavior to be verified or explicitly waived.

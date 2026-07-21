@@ -1,6 +1,6 @@
 {
   "name": "loopbreaker",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Local-first planning health and bounded review graph for explicit shipping decisions.",
   "type": "module",
   "bin": {
@@ -15,6 +15,7 @@
     "mcp",
     "skills",
     ".codex-plugin",
+    ".claude-plugin",
     ".mcp.json",
     "README.md",
     "LICENSE"

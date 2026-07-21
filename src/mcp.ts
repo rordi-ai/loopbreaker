@@ -10,7 +10,10 @@ import {
   recordEvidence,
   recordPass,
   recordPlanning,
+  recordPlanningReviewPass,
+  recordShape,
   substrate,
+  upsertPlanningFinding,
   upsertFinding,
   verifyBehavior,
 } from "./domain.js";
@@ -57,6 +60,18 @@ const planningSchema = z.object({
   risks: z.array(z.object({ risk: z.string(), mitigation: z.string() })).optional(),
 });
 
+const shapeSchema = z.object({
+  problem: z.string(),
+  appetite: z.string(),
+  smallest_slice: z.string(),
+  non_goals: z.array(z.string()),
+  success_signal: z.string(),
+  reversibility: z.string(),
+  decision_owner: z.string(),
+  risks: z.array(z.object({ risk: z.string(), mitigation: z.string() })),
+  disposition: z.enum(["proceed", "spike", "park", "reject"]),
+});
+
 function planningSummary(health: PlanningHealth) {
   return {
     score: health.score,
@@ -73,10 +88,10 @@ function planningSummary(health: PlanningHealth) {
 export async function runMcp(dbPath?: string): Promise<void> {
   const db = openDb(dbPath);
   const server = new McpServer(
-    { name: "loopbreaker", version: "0.3.0" },
+    { name: "loopbreaker", version: "0.4.0" },
     {
       instructions:
-        "Call review_list_issues, planning_health, then review_substrate before implementation or review. Planning must be ready before pass one. Never create pass 4. Review completion is not shipping readiness: check review_ship_status before recommending shipment.",
+        "Call delivery_readiness before implementation or review. Admission requires shape proceed, planning health ready, and independent planning-review approval. Planning review and code review each stop after pass 3; there is no pass 4. Shipping additionally requires every enforced behavior verified or explicitly waived.",
     },
   );
 
@@ -144,6 +159,18 @@ export async function runMcp(dbPath?: string): Promise<void> {
   );
 
   server.registerTool(
+    "shape_record",
+    {
+      description: "Record the explicit product-shape decision. Only a complete proceed disposition releases the shape gate; exact replay is idempotent and review freezes changes.",
+      inputSchema: { issue_id: z.string().min(1), shape: shapeSchema },
+    },
+    async ({ issue_id, shape }) => {
+      try { return content(recordShape(db, issue_id, shape), db.path); }
+      catch (error) { return toolError(error); }
+    },
+  );
+
+  server.registerTool(
     "planning_health",
     {
       description: "Return deterministic planning score, five dimensions, named hard blockers, and readiness without the full profile.",
@@ -163,6 +190,58 @@ export async function runMcp(dbPath?: string): Promise<void> {
     },
     async ({ issue_id }) => {
       try { return content(substrate(db, issue_id), db.path); } catch (error) { return toolError(error); }
+    },
+  );
+
+  server.registerTool(
+    "delivery_readiness",
+    {
+      description: "Return the compact ordered authority chain: shape, structural planning health, independent planning review, implementation admission, and shipping.",
+      inputSchema: { issue_id: z.string().min(1) },
+    },
+    async ({ issue_id }) => {
+      try {
+        const state = substrate(db, issue_id);
+        return content({
+          issue_id, shape: state.shape, planning: planningSummary(state.planning), planning_review: state.planning_review,
+          implementation: { admitted: state.shape.ready && state.planning.ready && state.planning_review.approved }, shipping: state.shipping,
+        }, db.path);
+      } catch (error) { return toolError(error); }
+    },
+  );
+
+  server.registerTool(
+    "planning_review_upsert_finding",
+    {
+      description: "Create or update one stable shape/planning finding. Open P0/P1 findings require reachability, impact, and smallest fix and prevent approval.",
+      inputSchema: {
+        issue_id: z.string().min(1), finding_id: z.string().min(1), review_pass_number: z.number().int().min(1).max(3).optional(),
+        stage: z.enum(["shape", "planning"]), severity: z.enum(["P0", "P1", "P2", "P3"]),
+        status: z.enum(["open", "repaired", "accepted_debt"]), title: z.string().min(1),
+        reachability: z.string().optional(), impact: z.string().optional(), smallest_fix: z.string().optional(),
+      },
+    },
+    async (input) => {
+      try { return content(upsertPlanningFinding(db, {
+        issueId: input.issue_id, findingId: input.finding_id, reviewPassNumber: input.review_pass_number,
+        stage: input.stage, severity: input.severity, status: input.status, title: input.title,
+        reachability: input.reachability, impact: input.impact, smallestFix: input.smallest_fix,
+      }), db.path); } catch (error) { return toolError(error); }
+    },
+  );
+
+  server.registerTool(
+    "planning_review_record_pass",
+    {
+      description: "Record the next independent planning-review pass: comprehensive, repair verification, then decision-only. No pass four exists.",
+      inputSchema: {
+        issue_id: z.string().min(1), pass_number: z.number().int().min(1).max(3),
+        verdict: z.enum(["approved", "changes_required", "rescope", "return_to_shaping"]), summary: z.string().min(1),
+      },
+    },
+    async (input) => {
+      try { return content(recordPlanningReviewPass(db, { issueId: input.issue_id, passNumber: input.pass_number, verdict: input.verdict, summary: input.summary }), db.path); }
+      catch (error) { return toolError(error); }
     },
   );
 
@@ -271,13 +350,13 @@ export async function runMcp(dbPath?: string): Promise<void> {
   server.registerTool(
     "review_ship_status",
     {
-      description: "Return the authoritative ship disposition derived in order from planning readiness, then enforced behavior verification and waivers.",
+      description: "Return the authoritative ship disposition derived from shape, planning health, planning-review approval, then enforced behavior verification and waivers.",
       inputSchema: { issue_id: z.string().min(1) },
     },
     async ({ issue_id }) => {
       try {
         const state = substrate(db, issue_id);
-        return content({ issue_id, planning: planningSummary(state.planning), review: state.review, shipping: state.shipping }, db.path);
+        return content({ issue_id, shape: state.shape, planning: planningSummary(state.planning), planning_review: state.planning_review, review: state.review, shipping: state.shipping }, db.path);
       } catch (error) { return toolError(error); }
     },
   );

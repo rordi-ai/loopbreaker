@@ -21200,10 +21200,42 @@ var LoopbreakerDb = class {
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS shape_assessments (
+        issue_id TEXT PRIMARY KEY REFERENCES issues(id) ON DELETE CASCADE,
+        profile_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS planning_review_passes (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        pass_number INTEGER NOT NULL CHECK (pass_number BETWEEN 1 AND 3),
+        kind TEXT NOT NULL CHECK (kind IN ('comprehensive', 'repair_verification', 'decision')),
+        verdict TEXT NOT NULL CHECK (verdict IN ('approved', 'changes_required', 'rescope', 'return_to_shaping')),
+        summary TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(issue_id, pass_number)
+      );
+
+      CREATE TABLE IF NOT EXISTS planning_findings (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        planning_review_pass_id TEXT REFERENCES planning_review_passes(id) ON DELETE SET NULL,
+        stage TEXT NOT NULL CHECK (stage IN ('shape', 'planning')),
+        severity TEXT NOT NULL CHECK (severity IN ('P0', 'P1', 'P2', 'P3')),
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'repaired', 'accepted_debt')),
+        title TEXT NOT NULL,
+        reachability TEXT,
+        impact TEXT,
+        smallest_fix TEXT
+      );
+
       CREATE INDEX IF NOT EXISTS idx_behaviors_issue ON behaviors(issue_id);
       CREATE INDEX IF NOT EXISTS idx_evidence_issue ON evidence(issue_id);
       CREATE INDEX IF NOT EXISTS idx_findings_issue ON findings(issue_id);
       CREATE INDEX IF NOT EXISTS idx_review_passes_issue ON review_passes(issue_id);
+      CREATE INDEX IF NOT EXISTS idx_planning_review_passes_issue ON planning_review_passes(issue_id);
+      CREATE INDEX IF NOT EXISTS idx_planning_findings_issue ON planning_findings(issue_id);
     `);
     const behaviorColumns = new Set(
       this.raw.prepare("PRAGMA table_info(behaviors)").all().map((column) => column.name)
@@ -21241,6 +21273,12 @@ var LoopbreakerDb = class {
   reviewPasses(issueId) {
     return this.raw.prepare("SELECT * FROM review_passes WHERE issue_id = ? ORDER BY pass_number").all(issueId);
   }
+  planningReviewPasses(issueId) {
+    return this.raw.prepare("SELECT * FROM planning_review_passes WHERE issue_id = ? ORDER BY pass_number").all(issueId);
+  }
+  planningFindings(issueId) {
+    return this.raw.prepare("SELECT * FROM planning_findings WHERE issue_id = ? ORDER BY severity, id").all(issueId);
+  }
   waivers(issueId) {
     return this.raw.prepare("SELECT * FROM waivers WHERE issue_id = ? ORDER BY created_at, id").all(issueId);
   }
@@ -21251,6 +21289,16 @@ var LoopbreakerDb = class {
   setPlanningProfile(issueId, profile) {
     this.raw.prepare(`
       INSERT INTO planning_profiles (issue_id, profile_json) VALUES (?, ?)
+      ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
+    `).run(issueId, JSON.stringify(profile));
+  }
+  shapeProfile(issueId) {
+    const row = this.raw.prepare("SELECT profile_json FROM shape_assessments WHERE issue_id = ?").get(issueId);
+    return row ? JSON.parse(row.profile_json) : null;
+  }
+  setShapeProfile(issueId, profile) {
+    this.raw.prepare(`
+      INSERT INTO shape_assessments (issue_id, profile_json) VALUES (?, ?)
       ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
     `).run(issueId, JSON.stringify(profile));
   }
@@ -21279,14 +21327,68 @@ var REVIEW_KINDS = {
   2: "repair_verification",
   3: "decision"
 };
+var PLANNING_REVIEW_KINDS = {
+  1: "comprehensive",
+  2: "repair_verification",
+  3: "decision"
+};
 function reviewKind(passNumber) {
   const kind = REVIEW_KINDS[passNumber];
   if (!kind) throw new DomainError("invalid_pass", "Review passes are limited to 1, 2, and 3.");
   return kind;
 }
+function planningReviewKind(passNumber) {
+  const kind = PLANNING_REVIEW_KINDS[passNumber];
+  if (!kind) throw new DomainError("invalid_planning_review_pass", "Planning review passes are limited to 1, 2, and 3.", "There is no automatic pass 4.");
+  return kind;
+}
 var PLANNING_THRESHOLD = 80;
 function present(value) {
   return Boolean(value?.trim());
+}
+function shapeState(db, issueId) {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
+  const profile = db.shapeProfile(issueId);
+  const blockers = [];
+  if (!profile) blockers.push({ code: "missing_shape", message: "No explicit shape decision is recorded." });
+  if (profile) {
+    const required2 = [profile.problem, profile.appetite, profile.smallest_slice, profile.success_signal, profile.reversibility, profile.decision_owner];
+    if (required2.some((value) => !present(value))) blockers.push({ code: "incomplete_shape", message: "Shape requires problem, appetite, smallest slice, success signal, reversibility, and decision owner." });
+    if (profile.non_goals.length === 0) blockers.push({ code: "missing_non_goals", message: "Shape must state at least one non-goal." });
+    if (profile.risks.some((risk) => !present(risk.risk) || !present(risk.mitigation))) blockers.push({ code: "unmitigated_shape_risk", message: "Every shape risk requires a mitigation." });
+    if (profile.disposition !== "proceed") blockers.push({ code: `shape_${profile.disposition}`, message: `Shape disposition is ${profile.disposition}, not proceed.` });
+  }
+  return { profile, ready: blockers.length === 0, blockers };
+}
+function recordShape(db, issueId, profile) {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
+  const current = db.shapeProfile(issueId);
+  if (db.planningReviewPasses(issueId).length > 0 && current !== null) {
+    if (isDeepStrictEqual(current, profile)) return shapeState(db, issueId);
+    throw new DomainError("shape_frozen", `${issueId} already has planning-review passes; its shape cannot change silently.`, "Create a new issue or record an explicit re-scope decision.");
+  }
+  db.setShapeProfile(issueId, profile);
+  return shapeState(db, issueId);
+}
+function planningReviewState(db, issueId) {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`);
+  const passes = db.planningReviewPasses(issueId);
+  const findings = db.planningFindings(issueId);
+  const latest = passes.at(-1);
+  const terminal = latest?.verdict === "approved" || latest?.verdict === "rescope" || latest?.verdict === "return_to_shaping";
+  const nextPass = terminal || passes.length >= 3 ? null : passes.length + 1;
+  return {
+    pass_count: passes.length,
+    current_pass: latest?.pass_number ?? null,
+    next_pass: nextPass,
+    next_action: nextPass ? planningReviewKind(nextPass) : "none",
+    automatic_pass_four: false,
+    decision_required: passes.length === 2 && latest?.verdict === "changes_required",
+    complete: terminal || passes.length === 3,
+    approved: latest?.verdict === "approved",
+    disposition: latest?.verdict ?? "pending",
+    open_blocking_count: findings.filter((finding) => finding.status === "open" && (finding.severity === "P0" || finding.severity === "P1")).length
+  };
 }
 function planningHealth(db, issueId) {
   const issue2 = db.issue(issueId);
@@ -21351,7 +21453,7 @@ function planningHealth(db, issueId) {
 function recordPlanning(db, issueId, profile) {
   if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
   const current = db.planningProfile(issueId);
-  if (db.reviewPasses(issueId).length > 0 && current !== null) {
+  if ((db.reviewPasses(issueId).length > 0 || db.planningReviewPasses(issueId).length > 0) && current !== null) {
     if (isDeepStrictEqual(current, profile)) return planningHealth(db, issueId);
     throw new DomainError("plan_frozen", `${issueId} already has review passes; its planning profile cannot change silently.`, "Create a new issue or explicitly re-scope before another review.");
   }
@@ -21367,8 +21469,12 @@ function substrate(db, issueId) {
   const evidence = db.evidence(issueId);
   const findings = db.findings(issueId);
   const reviewPasses = db.reviewPasses(issueId);
+  const planningReviewPasses = db.planningReviewPasses(issueId);
+  const planningFindings = db.planningFindings(issueId);
   const waivers = db.waivers(issueId);
   const planning = planningHealth(db, issueId);
+  const shape = shapeState(db, issueId);
+  const planningReview = planningReviewState(db, issueId);
   const waiverByBehavior = new Map(waivers.map((waiver) => [waiver.behavior_id, waiver.id]));
   const enforced = behaviors.filter((behavior) => behavior.enforced === 1);
   const verified = enforced.filter((behavior) => behavior.status === "verified");
@@ -21376,7 +21482,19 @@ function substrate(db, issueId) {
   const resolved = new Set([...verified, ...waived].map((behavior) => behavior.id));
   const unresolved = enforced.filter((behavior) => !resolved.has(behavior.id));
   let shipping;
-  if (!planning.ready) {
+  if (!shape.ready) {
+    shipping = {
+      disposition: "hold",
+      ready: false,
+      reason: `Shape is not ready: ${shape.blockers.map((blocker) => blocker.code).join(", ")}.`,
+      enforced_total: enforced.length,
+      verified_total: verified.length,
+      waived_total: waived.length,
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      gate: "shape",
+      planning_score: planning.score
+    };
+  } else if (!planning.ready) {
     shipping = {
       disposition: "hold",
       ready: false,
@@ -21386,6 +21504,18 @@ function substrate(db, issueId) {
       waived_total: waived.length,
       unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
       gate: "planning",
+      planning_score: planning.score
+    };
+  } else if (!planningReview.approved) {
+    shipping = {
+      disposition: "hold",
+      ready: false,
+      reason: `Planning review is ${planningReview.disposition}; independent approval is required before implementation.`,
+      enforced_total: enforced.length,
+      verified_total: verified.length,
+      waived_total: waived.length,
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      gate: "planning_review",
       planning_score: planning.score
     };
   } else if (unresolved.length > 0) {
@@ -21435,7 +21565,11 @@ function substrate(db, issueId) {
       frozen_to_behavior_children: true,
       enforced_by_default: true
     },
+    shape,
     planning,
+    planning_review: planningReview,
+    planning_findings: planningFindings,
+    planning_review_passes: planningReviewPasses,
     behaviors: behaviors.map((behavior) => ({
       ...behavior,
       evidence_ids: evidence.filter((item) => item.behavior_id === behavior.id).map((item) => item.id),
@@ -21467,7 +21601,7 @@ function importContract(db, input) {
   }
   return db.transaction(() => {
     const existing = db.issue(input.issueId);
-    if (existing && db.reviewPasses(input.issueId).length > 0) {
+    if (existing && (db.reviewPasses(input.issueId).length > 0 || db.planningReviewPasses(input.issueId).length > 0)) {
       const current = db.behaviors(input.issueId);
       const unchanged = current.length === input.behaviors.length && current.every((behavior, index) => {
         const incoming = input.behaviors[index];
@@ -21485,7 +21619,7 @@ function importContract(db, input) {
       INSERT INTO issues (id, title, description) VALUES (?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description
     `).run(input.issueId, input.title, input.description ?? "");
-    if (!existing || db.reviewPasses(input.issueId).length === 0) {
+    if (!existing || db.reviewPasses(input.issueId).length === 0 && db.planningReviewPasses(input.issueId).length === 0) {
       db.raw.prepare("DELETE FROM behaviors WHERE issue_id = ?").run(input.issueId);
       const statement = db.raw.prepare(`
         INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal)
@@ -21506,13 +21640,77 @@ function importContract(db, input) {
     }
     if (input.planning) {
       const currentPlan = db.planningProfile(input.issueId);
-      if (db.reviewPasses(input.issueId).length > 0 && currentPlan !== null && !isDeepStrictEqual(currentPlan, input.planning)) {
+      if ((db.reviewPasses(input.issueId).length > 0 || db.planningReviewPasses(input.issueId).length > 0) && currentPlan !== null && !isDeepStrictEqual(currentPlan, input.planning)) {
         throw new DomainError("plan_frozen", `${input.issueId} already has review passes; its planning profile cannot change silently.`);
       }
       db.setPlanningProfile(input.issueId, input.planning);
     }
     return substrate(db, input.issueId);
   });
+}
+function upsertPlanningFinding(db, input) {
+  const current = substrate(db, input.issueId);
+  if ((input.severity === "P0" || input.severity === "P1") && input.status === "open") {
+    if ([input.reachability, input.impact, input.smallestFix].some((value) => !value?.trim())) {
+      throw new DomainError("incomplete_planning_blocker", "An open P0/P1 planning finding requires reachability, impact, and smallest fix.");
+    }
+  }
+  const existing = db.raw.prepare("SELECT issue_id FROM planning_findings WHERE id = ?").get(input.findingId);
+  if (existing && existing.issue_id !== input.issueId) throw new DomainError("planning_finding_conflict", `Finding ${input.findingId} already belongs to ${existing.issue_id}.`);
+  let passId = null;
+  if (input.reviewPassNumber !== void 0) {
+    const pass = current.planning_review_passes.find((item) => item.pass_number === input.reviewPassNumber);
+    if (!pass) throw new DomainError("planning_review_pass_not_found", `Planning-review pass ${input.reviewPassNumber} has not been recorded for ${input.issueId}.`);
+    passId = pass.id;
+  }
+  db.raw.prepare(`
+    INSERT INTO planning_findings (id, issue_id, planning_review_pass_id, stage, severity, status, title, reachability, impact, smallest_fix)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      planning_review_pass_id = COALESCE(excluded.planning_review_pass_id, planning_findings.planning_review_pass_id),
+      stage = excluded.stage, severity = excluded.severity, status = excluded.status,
+      title = excluded.title, reachability = COALESCE(excluded.reachability, planning_findings.reachability),
+      impact = COALESCE(excluded.impact, planning_findings.impact), smallest_fix = COALESCE(excluded.smallest_fix, planning_findings.smallest_fix)
+  `).run(
+    input.findingId,
+    input.issueId,
+    passId,
+    input.stage,
+    input.severity,
+    input.status,
+    input.title,
+    input.reachability ?? null,
+    input.impact ?? null,
+    input.smallestFix ?? null
+  );
+  return substrate(db, input.issueId);
+}
+function recordPlanningReviewPass(db, input) {
+  const current = substrate(db, input.issueId);
+  planningReviewKind(input.passNumber);
+  const existing = current.planning_review_passes.find((pass) => pass.pass_number === input.passNumber);
+  if (existing) {
+    if (existing.verdict === input.verdict && existing.summary === input.summary) return current;
+    throw new DomainError("planning_review_pass_conflict", `Planning-review pass ${input.passNumber} already has a different result.`);
+  }
+  if (input.passNumber !== current.planning_review.pass_count + 1) {
+    throw new DomainError("planning_review_pass_out_of_order", `Expected planning-review pass ${current.planning_review.pass_count + 1}, received pass ${input.passNumber}.`);
+  }
+  if (current.planning_review.complete) throw new DomainError("planning_review_complete", "Planning review is complete; another pass would expand the review loop.");
+  if (input.passNumber === 1 && !current.shape.ready) throw new DomainError("shape_not_ready", "Planning review cannot start until shape disposition is proceed and the shape is complete.");
+  if (input.passNumber === 1 && !current.planning.ready) throw new DomainError("planning_not_ready", `Planning review cannot start while health is ${current.planning.score}/100.`);
+  const allowed = input.passNumber < 3 ? ["approved", "changes_required"] : ["approved", "rescope", "return_to_shaping"];
+  if (!allowed.includes(input.verdict)) {
+    throw new DomainError("invalid_planning_review_verdict", `Pass ${input.passNumber} permits: ${allowed.join(", ")}.`);
+  }
+  if (input.verdict === "approved" && current.planning_review.open_blocking_count > 0) {
+    throw new DomainError("open_planning_blockers", `Approval is blocked by ${current.planning_review.open_blocking_count} open P0/P1 planning finding(s).`);
+  }
+  db.raw.prepare(`
+    INSERT INTO planning_review_passes (id, issue_id, pass_number, kind, verdict, summary)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, input.passNumber, planningReviewKind(input.passNumber), input.verdict, input.summary);
+  return substrate(db, input.issueId);
 }
 function recordPass(db, input) {
   const current = substrate(db, input.issueId);
@@ -21524,12 +21722,18 @@ function recordPass(db, input) {
     if (existing.verdict === input.verdict && existing.summary === input.summary) return current;
     throw new DomainError("pass_conflict", `Pass ${input.passNumber} already has a different result.`);
   }
-  if (input.passNumber === 1 && !current.planning.ready) {
+  if (!current.shape.ready) {
+    throw new DomainError("shape_not_ready", "Code review cannot continue until shape disposition is proceed and the shape is complete.");
+  }
+  if (!current.planning.ready) {
     throw new DomainError(
       "planning_not_ready",
-      `Pass one cannot start while planning health is ${current.planning.score}/100 with ${current.planning.blockers.length} blocker(s).`,
-      `Run loopbreaker health ${input.issueId}, repair the named blockers, then record pass one.`
+      `Code review cannot continue while planning health is ${current.planning.score}/100 with ${current.planning.blockers.length} blocker(s).`,
+      `Run loopbreaker health ${input.issueId}, repair the named blockers, then record the next allowed pass.`
     );
+  }
+  if (!current.planning_review.approved) {
+    throw new DomainError("planning_review_not_approved", "Code review cannot continue until the independent planning review is approved.", `Run loopbreaker readiness ${input.issueId} and complete the named planning-review action.`);
   }
   if (input.passNumber !== current.review.pass_count + 1) {
     throw new DomainError("pass_out_of_order", `Expected pass ${current.review.pass_count + 1}, received pass ${input.passNumber}.`);
@@ -21579,10 +21783,10 @@ function upsertFinding(db, input) {
       severity = excluded.severity,
       status = excluded.status,
       title = excluded.title,
-      blocker_reachability = excluded.blocker_reachability,
-      blocker_impact = excluded.blocker_impact,
-      blocker_rollback = excluded.blocker_rollback,
-      smallest_fix = excluded.smallest_fix
+      blocker_reachability = COALESCE(excluded.blocker_reachability, findings.blocker_reachability),
+      blocker_impact = COALESCE(excluded.blocker_impact, findings.blocker_impact),
+      blocker_rollback = COALESCE(excluded.blocker_rollback, findings.blocker_rollback),
+      smallest_fix = COALESCE(excluded.smallest_fix, findings.smallest_fix)
   `).run(
     input.findingId,
     input.issueId,
@@ -22098,6 +22302,17 @@ var planningSchema = external_exports.object({
   decision_owner: external_exports.string().optional(),
   risks: external_exports.array(external_exports.object({ risk: external_exports.string(), mitigation: external_exports.string() })).optional()
 });
+var shapeSchema = external_exports.object({
+  problem: external_exports.string(),
+  appetite: external_exports.string(),
+  smallest_slice: external_exports.string(),
+  non_goals: external_exports.array(external_exports.string()),
+  success_signal: external_exports.string(),
+  reversibility: external_exports.string(),
+  decision_owner: external_exports.string(),
+  risks: external_exports.array(external_exports.object({ risk: external_exports.string(), mitigation: external_exports.string() })),
+  disposition: external_exports.enum(["proceed", "spike", "park", "reject"])
+});
 function planningSummary(health) {
   return {
     score: health.score,
@@ -22113,9 +22328,9 @@ function planningSummary(health) {
 async function runMcp(dbPath) {
   const db = openDb(dbPath);
   const server = new McpServer(
-    { name: "loopbreaker", version: "0.3.0" },
+    { name: "loopbreaker", version: "0.4.0" },
     {
-      instructions: "Call review_list_issues, planning_health, then review_substrate before implementation or review. Planning must be ready before pass one. Never create pass 4. Review completion is not shipping readiness: check review_ship_status before recommending shipment."
+      instructions: "Call delivery_readiness before implementation or review. Admission requires shape proceed, planning health ready, and independent planning-review approval. Planning review and code review each stop after pass 3; there is no pass 4. Shipping additionally requires every enforced behavior verified or explicitly waived."
     }
   );
   server.registerTool(
@@ -22185,6 +22400,20 @@ async function runMcp(dbPath) {
     }
   );
   server.registerTool(
+    "shape_record",
+    {
+      description: "Record the explicit product-shape decision. Only a complete proceed disposition releases the shape gate; exact replay is idempotent and review freezes changes.",
+      inputSchema: { issue_id: external_exports.string().min(1), shape: shapeSchema }
+    },
+    async ({ issue_id, shape }) => {
+      try {
+        return content(recordShape(db, issue_id, shape), db.path);
+      } catch (error2) {
+        return toolError(error2);
+      }
+    }
+  );
+  server.registerTool(
     "planning_health",
     {
       description: "Return deterministic planning score, five dimensions, named hard blockers, and readiness without the full profile.",
@@ -22207,6 +22436,83 @@ async function runMcp(dbPath) {
     async ({ issue_id }) => {
       try {
         return content(substrate(db, issue_id), db.path);
+      } catch (error2) {
+        return toolError(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "delivery_readiness",
+    {
+      description: "Return the compact ordered authority chain: shape, structural planning health, independent planning review, implementation admission, and shipping.",
+      inputSchema: { issue_id: external_exports.string().min(1) }
+    },
+    async ({ issue_id }) => {
+      try {
+        const state = substrate(db, issue_id);
+        return content({
+          issue_id,
+          shape: state.shape,
+          planning: planningSummary(state.planning),
+          planning_review: state.planning_review,
+          implementation: { admitted: state.shape.ready && state.planning.ready && state.planning_review.approved },
+          shipping: state.shipping
+        }, db.path);
+      } catch (error2) {
+        return toolError(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "planning_review_upsert_finding",
+    {
+      description: "Create or update one stable shape/planning finding. Open P0/P1 findings require reachability, impact, and smallest fix and prevent approval.",
+      inputSchema: {
+        issue_id: external_exports.string().min(1),
+        finding_id: external_exports.string().min(1),
+        review_pass_number: external_exports.number().int().min(1).max(3).optional(),
+        stage: external_exports.enum(["shape", "planning"]),
+        severity: external_exports.enum(["P0", "P1", "P2", "P3"]),
+        status: external_exports.enum(["open", "repaired", "accepted_debt"]),
+        title: external_exports.string().min(1),
+        reachability: external_exports.string().optional(),
+        impact: external_exports.string().optional(),
+        smallest_fix: external_exports.string().optional()
+      }
+    },
+    async (input) => {
+      try {
+        return content(upsertPlanningFinding(db, {
+          issueId: input.issue_id,
+          findingId: input.finding_id,
+          reviewPassNumber: input.review_pass_number,
+          stage: input.stage,
+          severity: input.severity,
+          status: input.status,
+          title: input.title,
+          reachability: input.reachability,
+          impact: input.impact,
+          smallestFix: input.smallest_fix
+        }), db.path);
+      } catch (error2) {
+        return toolError(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "planning_review_record_pass",
+    {
+      description: "Record the next independent planning-review pass: comprehensive, repair verification, then decision-only. No pass four exists.",
+      inputSchema: {
+        issue_id: external_exports.string().min(1),
+        pass_number: external_exports.number().int().min(1).max(3),
+        verdict: external_exports.enum(["approved", "changes_required", "rescope", "return_to_shaping"]),
+        summary: external_exports.string().min(1)
+      }
+    },
+    async (input) => {
+      try {
+        return content(recordPlanningReviewPass(db, { issueId: input.issue_id, passNumber: input.pass_number, verdict: input.verdict, summary: input.summary }), db.path);
       } catch (error2) {
         return toolError(error2);
       }
@@ -22326,13 +22632,13 @@ async function runMcp(dbPath) {
   server.registerTool(
     "review_ship_status",
     {
-      description: "Return the authoritative ship disposition derived in order from planning readiness, then enforced behavior verification and waivers.",
+      description: "Return the authoritative ship disposition derived from shape, planning health, planning-review approval, then enforced behavior verification and waivers.",
       inputSchema: { issue_id: external_exports.string().min(1) }
     },
     async ({ issue_id }) => {
       try {
         const state = substrate(db, issue_id);
-        return content({ issue_id, planning: planningSummary(state.planning), review: state.review, shipping: state.shipping }, db.path);
+        return content({ issue_id, shape: state.shape, planning: planningSummary(state.planning), planning_review: state.planning_review, review: state.review, shipping: state.shipping }, db.path);
       } catch (error2) {
         return toolError(error2);
       }

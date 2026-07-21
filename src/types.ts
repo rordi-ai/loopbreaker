@@ -5,6 +5,10 @@ export type ReviewKind = "comprehensive" | "repair_verification" | "decision";
 export type FindingSeverity = "P0" | "P1" | "P2" | "P3";
 export type FindingStatus = "open" | "repaired" | "accepted_debt";
 export type PlanningDimensionKey = "scope" | "contract" | "traceability" | "proof" | "operability";
+export type ShapeDisposition = "proceed" | "spike" | "park" | "reject";
+export type PlanningReviewKind = "comprehensive" | "repair_verification" | "decision";
+export type PlanningReviewVerdict = "approved" | "changes_required" | "rescope" | "return_to_shaping";
+export type PlanningFindingStage = "shape" | "planning";
 
 export interface PlanningWorkUnit {
   id: string;
@@ -35,6 +39,24 @@ export interface PlanningProfile {
   migration?: string;
   decision_owner?: string;
   risks?: PlanningRisk[];
+}
+
+export interface ShapeProfile {
+  problem: string;
+  appetite: string;
+  smallest_slice: string;
+  non_goals: string[];
+  success_signal: string;
+  reversibility: string;
+  decision_owner: string;
+  risks: PlanningRisk[];
+  disposition: ShapeDisposition;
+}
+
+export interface ShapeState {
+  profile: ShapeProfile | null;
+  ready: boolean;
+  blockers: Array<{ code: string; message: string }>;
 }
 
 export interface PlanningHealth {
@@ -94,6 +116,29 @@ export interface ReviewPassRow {
   created_at: string;
 }
 
+export interface PlanningReviewPassRow {
+  id: string;
+  issue_id: string;
+  pass_number: number;
+  kind: PlanningReviewKind;
+  verdict: PlanningReviewVerdict;
+  summary: string;
+  created_at: string;
+}
+
+export interface PlanningFindingRow {
+  id: string;
+  issue_id: string;
+  planning_review_pass_id: string | null;
+  stage: PlanningFindingStage;
+  severity: FindingSeverity;
+  status: FindingStatus;
+  title: string;
+  reachability: string | null;
+  impact: string | null;
+  smallest_fix: string | null;
+}
+
 export interface FindingRow {
   id: string;
   issue_id: string;
@@ -127,6 +172,19 @@ export interface ReviewState {
   complete: boolean;
 }
 
+export interface PlanningReviewState {
+  pass_count: number;
+  current_pass: number | null;
+  next_pass: number | null;
+  next_action: PlanningReviewKind | "none";
+  automatic_pass_four: false;
+  decision_required: boolean;
+  complete: boolean;
+  approved: boolean;
+  disposition: PlanningReviewVerdict | "pending";
+  open_blocking_count: number;
+}
+
 export interface ShipState {
   disposition: "ship" | "hold" | "ship_with_debt";
   ready: boolean;
@@ -135,7 +193,7 @@ export interface ShipState {
   verified_total: number;
   waived_total: number;
   unresolved_behavior_ids: string[];
-  gate: "planning" | "verification" | "ready";
+  gate: "shape" | "planning" | "planning_review" | "verification" | "ready";
   planning_score: number;
 }
 
@@ -145,7 +203,11 @@ export interface Substrate {
     frozen_to_behavior_children: true;
     enforced_by_default: true;
   };
+  shape: ShapeState;
   planning: PlanningHealth;
+  planning_review: PlanningReviewState;
+  planning_findings: PlanningFindingRow[];
+  planning_review_passes: PlanningReviewPassRow[];
   behaviors: Array<BehaviorRow & { evidence_ids: string[]; waiver_id: string | null }>;
   evidence: EvidenceRow[];
   findings: FindingRow[];

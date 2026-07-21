@@ -7,7 +7,10 @@ import type {
   FindingRow,
   IssueRow,
   PlanningProfile,
+  PlanningFindingRow,
+  PlanningReviewPassRow,
   ReviewPassRow,
+  ShapeProfile,
   WaiverRow,
 } from "./types.js";
 
@@ -104,10 +107,42 @@ export class LoopbreakerDb {
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS shape_assessments (
+        issue_id TEXT PRIMARY KEY REFERENCES issues(id) ON DELETE CASCADE,
+        profile_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS planning_review_passes (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        pass_number INTEGER NOT NULL CHECK (pass_number BETWEEN 1 AND 3),
+        kind TEXT NOT NULL CHECK (kind IN ('comprehensive', 'repair_verification', 'decision')),
+        verdict TEXT NOT NULL CHECK (verdict IN ('approved', 'changes_required', 'rescope', 'return_to_shaping')),
+        summary TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(issue_id, pass_number)
+      );
+
+      CREATE TABLE IF NOT EXISTS planning_findings (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        planning_review_pass_id TEXT REFERENCES planning_review_passes(id) ON DELETE SET NULL,
+        stage TEXT NOT NULL CHECK (stage IN ('shape', 'planning')),
+        severity TEXT NOT NULL CHECK (severity IN ('P0', 'P1', 'P2', 'P3')),
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'repaired', 'accepted_debt')),
+        title TEXT NOT NULL,
+        reachability TEXT,
+        impact TEXT,
+        smallest_fix TEXT
+      );
+
       CREATE INDEX IF NOT EXISTS idx_behaviors_issue ON behaviors(issue_id);
       CREATE INDEX IF NOT EXISTS idx_evidence_issue ON evidence(issue_id);
       CREATE INDEX IF NOT EXISTS idx_findings_issue ON findings(issue_id);
       CREATE INDEX IF NOT EXISTS idx_review_passes_issue ON review_passes(issue_id);
+      CREATE INDEX IF NOT EXISTS idx_planning_review_passes_issue ON planning_review_passes(issue_id);
+      CREATE INDEX IF NOT EXISTS idx_planning_findings_issue ON planning_findings(issue_id);
     `);
 
     const behaviorColumns = new Set(
@@ -154,6 +189,14 @@ export class LoopbreakerDb {
     return this.raw.prepare("SELECT * FROM review_passes WHERE issue_id = ? ORDER BY pass_number").all(issueId) as unknown as ReviewPassRow[];
   }
 
+  planningReviewPasses(issueId: string): PlanningReviewPassRow[] {
+    return this.raw.prepare("SELECT * FROM planning_review_passes WHERE issue_id = ? ORDER BY pass_number").all(issueId) as unknown as PlanningReviewPassRow[];
+  }
+
+  planningFindings(issueId: string): PlanningFindingRow[] {
+    return this.raw.prepare("SELECT * FROM planning_findings WHERE issue_id = ? ORDER BY severity, id").all(issueId) as unknown as PlanningFindingRow[];
+  }
+
   waivers(issueId: string): WaiverRow[] {
     return this.raw.prepare("SELECT * FROM waivers WHERE issue_id = ? ORDER BY created_at, id").all(issueId) as unknown as WaiverRow[];
   }
@@ -166,6 +209,18 @@ export class LoopbreakerDb {
   setPlanningProfile(issueId: string, profile: PlanningProfile): void {
     this.raw.prepare(`
       INSERT INTO planning_profiles (issue_id, profile_json) VALUES (?, ?)
+      ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
+    `).run(issueId, JSON.stringify(profile));
+  }
+
+  shapeProfile(issueId: string): ShapeProfile | null {
+    const row = this.raw.prepare("SELECT profile_json FROM shape_assessments WHERE issue_id = ?").get(issueId) as { profile_json: string } | undefined;
+    return row ? JSON.parse(row.profile_json) as ShapeProfile : null;
+  }
+
+  setShapeProfile(issueId: string, profile: ShapeProfile): void {
+    this.raw.prepare(`
+      INSERT INTO shape_assessments (issue_id, profile_json) VALUES (?, ?)
       ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
     `).run(issueId, JSON.stringify(profile));
   }

@@ -5,9 +5,15 @@ import type {
   EvidenceTier,
   FindingSeverity,
   FindingStatus,
+  PlanningFindingStage,
   PlanningHealth,
   PlanningProfile,
+  PlanningReviewKind,
+  PlanningReviewState,
+  PlanningReviewVerdict,
   ReviewKind,
+  ShapeProfile,
+  ShapeState,
   ShipState,
   Substrate,
   Verdict,
@@ -29,6 +35,11 @@ const REVIEW_KINDS: Record<number, ReviewKind> = {
   2: "repair_verification",
   3: "decision",
 };
+const PLANNING_REVIEW_KINDS: Record<number, PlanningReviewKind> = {
+  1: "comprehensive",
+  2: "repair_verification",
+  3: "decision",
+};
 
 function reviewKind(passNumber: number): ReviewKind {
   const kind = REVIEW_KINDS[passNumber];
@@ -36,10 +47,63 @@ function reviewKind(passNumber: number): ReviewKind {
   return kind;
 }
 
+function planningReviewKind(passNumber: number): PlanningReviewKind {
+  const kind = PLANNING_REVIEW_KINDS[passNumber];
+  if (!kind) throw new DomainError("invalid_planning_review_pass", "Planning review passes are limited to 1, 2, and 3.", "There is no automatic pass 4.");
+  return kind;
+}
+
 const PLANNING_THRESHOLD = 80 as const;
 
 function present(value: string | undefined): boolean {
   return Boolean(value?.trim());
+}
+
+export function shapeState(db: LoopbreakerDb, issueId: string): ShapeState {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
+  const profile = db.shapeProfile(issueId);
+  const blockers: ShapeState["blockers"] = [];
+  if (!profile) blockers.push({ code: "missing_shape", message: "No explicit shape decision is recorded." });
+  if (profile) {
+    const required = [profile.problem, profile.appetite, profile.smallest_slice, profile.success_signal, profile.reversibility, profile.decision_owner];
+    if (required.some((value) => !present(value))) blockers.push({ code: "incomplete_shape", message: "Shape requires problem, appetite, smallest slice, success signal, reversibility, and decision owner." });
+    if (profile.non_goals.length === 0) blockers.push({ code: "missing_non_goals", message: "Shape must state at least one non-goal." });
+    if (profile.risks.some((risk) => !present(risk.risk) || !present(risk.mitigation))) blockers.push({ code: "unmitigated_shape_risk", message: "Every shape risk requires a mitigation." });
+    if (profile.disposition !== "proceed") blockers.push({ code: `shape_${profile.disposition}`, message: `Shape disposition is ${profile.disposition}, not proceed.` });
+  }
+  return { profile, ready: blockers.length === 0, blockers };
+}
+
+export function recordShape(db: LoopbreakerDb, issueId: string, profile: ShapeProfile): ShapeState {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
+  const current = db.shapeProfile(issueId);
+  if (db.planningReviewPasses(issueId).length > 0 && current !== null) {
+    if (isDeepStrictEqual(current, profile)) return shapeState(db, issueId);
+    throw new DomainError("shape_frozen", `${issueId} already has planning-review passes; its shape cannot change silently.`, "Create a new issue or record an explicit re-scope decision.");
+  }
+  db.setShapeProfile(issueId, profile);
+  return shapeState(db, issueId);
+}
+
+export function planningReviewState(db: LoopbreakerDb, issueId: string): PlanningReviewState {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`);
+  const passes = db.planningReviewPasses(issueId);
+  const findings = db.planningFindings(issueId);
+  const latest = passes.at(-1);
+  const terminal = latest?.verdict === "approved" || latest?.verdict === "rescope" || latest?.verdict === "return_to_shaping";
+  const nextPass = terminal || passes.length >= 3 ? null : passes.length + 1;
+  return {
+    pass_count: passes.length,
+    current_pass: latest?.pass_number ?? null,
+    next_pass: nextPass,
+    next_action: nextPass ? planningReviewKind(nextPass) : "none",
+    automatic_pass_four: false,
+    decision_required: passes.length === 2 && latest?.verdict === "changes_required",
+    complete: terminal || passes.length === 3,
+    approved: latest?.verdict === "approved",
+    disposition: latest?.verdict ?? "pending",
+    open_blocking_count: findings.filter((finding) => finding.status === "open" && (finding.severity === "P0" || finding.severity === "P1")).length,
+  };
 }
 
 export function planningHealth(db: LoopbreakerDb, issueId: string): PlanningHealth {
@@ -128,7 +192,7 @@ export function planningHealth(db: LoopbreakerDb, issueId: string): PlanningHeal
 export function recordPlanning(db: LoopbreakerDb, issueId: string, profile: PlanningProfile): PlanningHealth {
   if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
   const current = db.planningProfile(issueId);
-  if (db.reviewPasses(issueId).length > 0 && current !== null) {
+  if ((db.reviewPasses(issueId).length > 0 || db.planningReviewPasses(issueId).length > 0) && current !== null) {
     if (isDeepStrictEqual(current, profile)) return planningHealth(db, issueId);
     throw new DomainError("plan_frozen", `${issueId} already has review passes; its planning profile cannot change silently.`, "Create a new issue or explicitly re-scope before another review.");
   }
@@ -146,8 +210,12 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
   const evidence = db.evidence(issueId);
   const findings = db.findings(issueId);
   const reviewPasses = db.reviewPasses(issueId);
+  const planningReviewPasses = db.planningReviewPasses(issueId);
+  const planningFindings = db.planningFindings(issueId);
   const waivers = db.waivers(issueId);
   const planning = planningHealth(db, issueId);
+  const shape = shapeState(db, issueId);
+  const planningReview = planningReviewState(db, issueId);
   const waiverByBehavior = new Map(waivers.map((waiver) => [waiver.behavior_id, waiver.id]));
 
   const enforced = behaviors.filter((behavior) => behavior.enforced === 1);
@@ -157,7 +225,14 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
   const unresolved = enforced.filter((behavior) => !resolved.has(behavior.id));
 
   let shipping: ShipState;
-  if (!planning.ready) {
+  if (!shape.ready) {
+    shipping = {
+      disposition: "hold", ready: false,
+      reason: `Shape is not ready: ${shape.blockers.map((blocker) => blocker.code).join(", ")}.`,
+      enforced_total: enforced.length, verified_total: verified.length, waived_total: waived.length,
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id), gate: "shape", planning_score: planning.score,
+    };
+  } else if (!planning.ready) {
     shipping = {
       disposition: "hold",
       ready: false,
@@ -168,6 +243,13 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
       gate: "planning",
       planning_score: planning.score,
+    };
+  } else if (!planningReview.approved) {
+    shipping = {
+      disposition: "hold", ready: false,
+      reason: `Planning review is ${planningReview.disposition}; independent approval is required before implementation.`,
+      enforced_total: enforced.length, verified_total: verified.length, waived_total: waived.length,
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id), gate: "planning_review", planning_score: planning.score,
     };
   } else if (unresolved.length > 0) {
     shipping = {
@@ -218,7 +300,11 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       frozen_to_behavior_children: true,
       enforced_by_default: true,
     },
+    shape,
     planning,
+    planning_review: planningReview,
+    planning_findings: planningFindings,
+    planning_review_passes: planningReviewPasses,
     behaviors: behaviors.map((behavior) => ({
       ...behavior,
       evidence_ids: evidence.filter((item) => item.behavior_id === behavior.id).map((item) => item.id),
@@ -261,7 +347,7 @@ export function importContract(
 
   return db.transaction(() => {
     const existing = db.issue(input.issueId);
-    if (existing && db.reviewPasses(input.issueId).length > 0) {
+    if (existing && (db.reviewPasses(input.issueId).length > 0 || db.planningReviewPasses(input.issueId).length > 0)) {
       const current = db.behaviors(input.issueId);
       const unchanged = current.length === input.behaviors.length && current.every((behavior, index) => {
         const incoming = input.behaviors[index];
@@ -287,7 +373,7 @@ export function importContract(
       ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description
     `).run(input.issueId, input.title, input.description ?? "");
 
-    if (!existing || db.reviewPasses(input.issueId).length === 0) {
+    if (!existing || (db.reviewPasses(input.issueId).length === 0 && db.planningReviewPasses(input.issueId).length === 0)) {
       db.raw.prepare("DELETE FROM behaviors WHERE issue_id = ?").run(input.issueId);
       const statement = db.raw.prepare(`
         INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal)
@@ -308,13 +394,88 @@ export function importContract(
     }
     if (input.planning) {
       const currentPlan = db.planningProfile(input.issueId);
-      if (db.reviewPasses(input.issueId).length > 0 && currentPlan !== null && !isDeepStrictEqual(currentPlan, input.planning)) {
+      if ((db.reviewPasses(input.issueId).length > 0 || db.planningReviewPasses(input.issueId).length > 0) && currentPlan !== null && !isDeepStrictEqual(currentPlan, input.planning)) {
         throw new DomainError("plan_frozen", `${input.issueId} already has review passes; its planning profile cannot change silently.`);
       }
       db.setPlanningProfile(input.issueId, input.planning);
     }
     return substrate(db, input.issueId);
   });
+}
+
+export function upsertPlanningFinding(
+  db: LoopbreakerDb,
+  input: {
+    issueId: string;
+    findingId: string;
+    reviewPassNumber?: number;
+    stage: PlanningFindingStage;
+    severity: FindingSeverity;
+    status: FindingStatus;
+    title: string;
+    reachability?: string;
+    impact?: string;
+    smallestFix?: string;
+  },
+): Substrate {
+  const current = substrate(db, input.issueId);
+  if ((input.severity === "P0" || input.severity === "P1") && input.status === "open") {
+    if ([input.reachability, input.impact, input.smallestFix].some((value) => !value?.trim())) {
+      throw new DomainError("incomplete_planning_blocker", "An open P0/P1 planning finding requires reachability, impact, and smallest fix.");
+    }
+  }
+  const existing = db.raw.prepare("SELECT issue_id FROM planning_findings WHERE id = ?").get(input.findingId) as { issue_id: string } | undefined;
+  if (existing && existing.issue_id !== input.issueId) throw new DomainError("planning_finding_conflict", `Finding ${input.findingId} already belongs to ${existing.issue_id}.`);
+  let passId: string | null = null;
+  if (input.reviewPassNumber !== undefined) {
+    const pass = current.planning_review_passes.find((item) => item.pass_number === input.reviewPassNumber);
+    if (!pass) throw new DomainError("planning_review_pass_not_found", `Planning-review pass ${input.reviewPassNumber} has not been recorded for ${input.issueId}.`);
+    passId = pass.id;
+  }
+  db.raw.prepare(`
+    INSERT INTO planning_findings (id, issue_id, planning_review_pass_id, stage, severity, status, title, reachability, impact, smallest_fix)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      planning_review_pass_id = COALESCE(excluded.planning_review_pass_id, planning_findings.planning_review_pass_id),
+      stage = excluded.stage, severity = excluded.severity, status = excluded.status,
+      title = excluded.title, reachability = COALESCE(excluded.reachability, planning_findings.reachability),
+      impact = COALESCE(excluded.impact, planning_findings.impact), smallest_fix = COALESCE(excluded.smallest_fix, planning_findings.smallest_fix)
+  `).run(input.findingId, input.issueId, passId, input.stage, input.severity, input.status, input.title,
+    input.reachability ?? null, input.impact ?? null, input.smallestFix ?? null);
+  return substrate(db, input.issueId);
+}
+
+export function recordPlanningReviewPass(
+  db: LoopbreakerDb,
+  input: { issueId: string; passNumber: number; verdict: PlanningReviewVerdict; summary: string },
+): Substrate {
+  const current = substrate(db, input.issueId);
+  planningReviewKind(input.passNumber);
+  const existing = current.planning_review_passes.find((pass) => pass.pass_number === input.passNumber);
+  if (existing) {
+    if (existing.verdict === input.verdict && existing.summary === input.summary) return current;
+    throw new DomainError("planning_review_pass_conflict", `Planning-review pass ${input.passNumber} already has a different result.`);
+  }
+  if (input.passNumber !== current.planning_review.pass_count + 1) {
+    throw new DomainError("planning_review_pass_out_of_order", `Expected planning-review pass ${current.planning_review.pass_count + 1}, received pass ${input.passNumber}.`);
+  }
+  if (current.planning_review.complete) throw new DomainError("planning_review_complete", "Planning review is complete; another pass would expand the review loop.");
+  if (input.passNumber === 1 && !current.shape.ready) throw new DomainError("shape_not_ready", "Planning review cannot start until shape disposition is proceed and the shape is complete.");
+  if (input.passNumber === 1 && !current.planning.ready) throw new DomainError("planning_not_ready", `Planning review cannot start while health is ${current.planning.score}/100.`);
+  const allowed = input.passNumber < 3
+    ? ["approved", "changes_required"]
+    : ["approved", "rescope", "return_to_shaping"];
+  if (!allowed.includes(input.verdict)) {
+    throw new DomainError("invalid_planning_review_verdict", `Pass ${input.passNumber} permits: ${allowed.join(", ")}.`);
+  }
+  if (input.verdict === "approved" && current.planning_review.open_blocking_count > 0) {
+    throw new DomainError("open_planning_blockers", `Approval is blocked by ${current.planning_review.open_blocking_count} open P0/P1 planning finding(s).`);
+  }
+  db.raw.prepare(`
+    INSERT INTO planning_review_passes (id, issue_id, pass_number, kind, verdict, summary)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, input.passNumber, planningReviewKind(input.passNumber), input.verdict, input.summary);
+  return substrate(db, input.issueId);
 }
 
 export function recordPass(
@@ -330,12 +491,18 @@ export function recordPass(
     if (existing.verdict === input.verdict && existing.summary === input.summary) return current;
     throw new DomainError("pass_conflict", `Pass ${input.passNumber} already has a different result.`);
   }
-  if (input.passNumber === 1 && !current.planning.ready) {
+  if (!current.shape.ready) {
+    throw new DomainError("shape_not_ready", "Code review cannot continue until shape disposition is proceed and the shape is complete.");
+  }
+  if (!current.planning.ready) {
     throw new DomainError(
       "planning_not_ready",
-      `Pass one cannot start while planning health is ${current.planning.score}/100 with ${current.planning.blockers.length} blocker(s).`,
-      `Run loopbreaker health ${input.issueId}, repair the named blockers, then record pass one.`,
+      `Code review cannot continue while planning health is ${current.planning.score}/100 with ${current.planning.blockers.length} blocker(s).`,
+      `Run loopbreaker health ${input.issueId}, repair the named blockers, then record the next allowed pass.`,
     );
+  }
+  if (!current.planning_review.approved) {
+    throw new DomainError("planning_review_not_approved", "Code review cannot continue until the independent planning review is approved.", `Run loopbreaker readiness ${input.issueId} and complete the named planning-review action.`);
   }
   if (input.passNumber !== current.review.pass_count + 1) {
     throw new DomainError("pass_out_of_order", `Expected pass ${current.review.pass_count + 1}, received pass ${input.passNumber}.`);
@@ -402,10 +569,10 @@ export function upsertFinding(
       severity = excluded.severity,
       status = excluded.status,
       title = excluded.title,
-      blocker_reachability = excluded.blocker_reachability,
-      blocker_impact = excluded.blocker_impact,
-      blocker_rollback = excluded.blocker_rollback,
-      smallest_fix = excluded.smallest_fix
+      blocker_reachability = COALESCE(excluded.blocker_reachability, findings.blocker_reachability),
+      blocker_impact = COALESCE(excluded.blocker_impact, findings.blocker_impact),
+      blocker_rollback = COALESCE(excluded.blocker_rollback, findings.blocker_rollback),
+      smallest_fix = COALESCE(excluded.smallest_fix, findings.smallest_fix)
   `).run(
     input.findingId,
     input.issueId,

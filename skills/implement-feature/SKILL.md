@@ -10,14 +10,16 @@ that boundary; it may not silently change the boundary.
 
 ## Preflight
 
-1. Call `planning_health`. If `ready` is false, stop implementation and return the
-   named blockers; a high score alone is not readiness.
-2. Call `review_substrate` for the issue.
+1. Call `delivery_readiness`. Stop unless shape is ready, planning is ready, and
+   `planning_review.approved` plus `implementation.admitted` are true.
+2. Call `review_substrate` for the issue and return the exact active gate when held.
 3. Confirm the requested work maps to named behavior IDs and planning work units.
 4. Read repository instructions and the production construction path.
 5. Inspect current status and preserve unrelated worktree changes.
 
 If there is no imported contract or planning profile, stop and use `$plan-feature`.
+If planning is structurally ready but not independently approved, use
+`$review-planning`; never self-approve from this skill.
 If the requested change would add acceptance requirements, report the scope change
 instead of coding it as an incidental improvement.
 

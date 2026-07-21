@@ -54,6 +54,23 @@ export function seedDemo(db: LoopbreakerDb) {
       decision_owner: "Demo operator",
       risks: [{ risk: "The SDK may ignore idempotency.", mitigation: "Retain the cold-path rollback." }],
     });
+    db.setShapeProfile(DEMO_ISSUE, {
+      problem: "Warm handoff can accept a retry without proving the external effect remains exact once.",
+      appetite: "One bounded exact-once repair slice.",
+      smallest_slice: "Persist acceptance and carry one idempotency key through the wired SDK boundary.",
+      non_goals: ["Redesigning the external SDK"],
+      success_signal: "A wired redelivery creates one external effect.",
+      reversibility: "Disable warm reuse and return to the cold path.",
+      decision_owner: "Demo operator",
+      risks: [{ risk: "The SDK may ignore idempotency.", mitigation: "Retain the cold-path rollback." }],
+      disposition: "proceed",
+    });
+
+    db.raw.prepare(`
+      INSERT INTO planning_review_passes (id, issue_id, pass_number, kind, verdict, summary)
+      VALUES (?, ?, 1, 'comprehensive', 'approved', ?)
+      ON CONFLICT(issue_id, pass_number) DO NOTHING
+    `).run("DEMO-PP1", DEMO_ISSUE, "Shape and plan form a bounded, traceable, reversible implementation contract.");
 
     const evidence = db.raw.prepare(`
       INSERT INTO evidence (id, issue_id, behavior_id, tier, verdict, summary, source)

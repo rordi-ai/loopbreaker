@@ -2,9 +2,9 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { DomainError, planningHealth, recordEvidence, recordPass, recordPlanning, substrate, verifyBehavior, createWaiver, importContract } from "./domain.js";
+import { DomainError, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertPlanningFinding, verifyBehavior, createWaiver, importContract } from "./domain.js";
 import { openDb, type LoopbreakerDb } from "./db.js";
-import type { PlanningHealth, PlanningProfile } from "./types.js";
+import type { PlanningHealth, PlanningProfile, ShapeProfile } from "./types.js";
 import { runMcp } from "./mcp.js";
 import { DEMO_ISSUE, seedDemo } from "./seed.js";
 import { startServer } from "./server.js";
@@ -20,7 +20,11 @@ Usage:
   loopbreaker demo [--db PATH]                 Seed the idempotent demo incident
   loopbreaker import FILE [--db PATH]          Import a JSON issue behavior contract
   loopbreaker plan ISSUE FILE [--db PATH]      Record or replace the pre-review planning profile
+  loopbreaker shape ISSUE FILE [--db PATH]     Record the explicit shape disposition
   loopbreaker health ISSUE [--db PATH]         Show compact planning health and blockers
+  loopbreaker readiness ISSUE [--db PATH]      Show the ordered admission and shipping gates
+  loopbreaker plan-pass ISSUE --pass N --verdict V --summary TEXT
+  loopbreaker plan-finding ISSUE --id ID --stage S --severity P --status S --title TEXT
   loopbreaker substrate ISSUE [--db PATH]      Show the full review substrate
   loopbreaker pass ISSUE --pass N --verdict V --summary TEXT
   loopbreaker evidence ISSUE --behavior ID --tier T --verdict V --summary TEXT [--source URI]
@@ -42,7 +46,11 @@ const COMMAND_HELP: Record<string, string> = {
   demo: "loopbreaker demo [--db PATH]\n\nSeed DEMO-1 without replacing existing records. Safe to run repeatedly.",
   import: "loopbreaker import FILE [--db PATH]\n\nImport JSON shaped as {issue_id,title,description?,behaviors:[...],planning?}. Reviewed contracts and planning are frozen.",
   plan: "loopbreaker plan ISSUE FILE [--db PATH]\n\nRecord a partial or complete planning profile before pass one. Returns deterministic health and named blockers.",
+  shape: "loopbreaker shape ISSUE FILE [--db PATH]\n\nRecord problem, appetite, smallest_slice, non_goals, success_signal, reversibility, decision_owner, risks, and disposition.",
   health: "loopbreaker health ISSUE [--db PATH]\n\nReturn score, dimensions, blockers, and readiness without the full planning profile.",
+  readiness: "loopbreaker readiness ISSUE [--db PATH]\n\nReturn shape, planning health, independent planning-review state, implementation admission, and shipping gate.",
+  "plan-pass": "loopbreaker plan-pass ISSUE --pass 1|2|3 --verdict approved|changes_required|rescope|return_to_shaping --summary TEXT [--db PATH]",
+  "plan-finding": "loopbreaker plan-finding ISSUE --id ID --stage shape|planning --severity P0|P1|P2|P3 --status open|repaired|accepted_debt --title TEXT [--reachability TEXT --impact TEXT --smallest-fix TEXT]",
   substrate: "loopbreaker substrate ISSUE [--db PATH]\n\nReturn behaviors, evidence, findings, passes, waivers, and derived ship state.",
   pass: "loopbreaker pass ISSUE --pass 1|2|3 --verdict pass|fail --summary TEXT [--db PATH]\n\nRecord only the next pass. Pass 4 is rejected.",
   evidence: "loopbreaker evidence ISSUE [--behavior ID] --tier unit|wired|live --verdict pass|fail --summary TEXT [--source URI] [--db PATH]",
@@ -140,6 +148,31 @@ function planningFromUnknown(value: unknown): PlanningProfile {
   return profile;
 }
 
+function shapeFromUnknown(value: unknown): ShapeProfile {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new DomainError("invalid_shape", "Shape profile must be a JSON object.");
+  const input = value as Record<string, unknown>;
+  const allowed = new Set(["problem", "appetite", "smallest_slice", "non_goals", "success_signal", "reversibility", "decision_owner", "risks", "disposition"]);
+  const unknown = Object.keys(input).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) throw new DomainError("invalid_shape", `Unknown shape fields: ${unknown.join(", ")}.`);
+  for (const key of ["problem", "appetite", "smallest_slice", "success_signal", "reversibility", "decision_owner"] as const) {
+    if (typeof input[key] !== "string") throw new DomainError("invalid_shape", `${key} must be a string.`);
+  }
+  if (!Array.isArray(input.non_goals) || input.non_goals.some((item) => typeof item !== "string")) throw new DomainError("invalid_shape", "non_goals must be an array of strings.");
+  if (!Array.isArray(input.risks)) throw new DomainError("invalid_shape", "risks must be an array.");
+  const risks = input.risks.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new DomainError("invalid_shape", "Each risk must be an object.");
+    const risk = item as Record<string, unknown>;
+    if (typeof risk.risk !== "string" || typeof risk.mitigation !== "string") throw new DomainError("invalid_shape", "Each risk requires string risk and mitigation.");
+    return { risk: risk.risk, mitigation: risk.mitigation };
+  });
+  const disposition = oneOf(String(input.disposition), ["proceed", "spike", "park", "reject"] as const, "disposition");
+  return {
+    problem: input.problem as string, appetite: input.appetite as string, smallest_slice: input.smallest_slice as string,
+    non_goals: input.non_goals as string[], success_signal: input.success_signal as string,
+    reversibility: input.reversibility as string, decision_owner: input.decision_owner as string, risks, disposition,
+  };
+}
+
 function planningSummary(health: PlanningHealth) {
   return {
     score: health.score,
@@ -150,6 +183,18 @@ function planningSummary(health: PlanningHealth) {
     dimensions: health.dimensions,
     blockers: health.blockers,
     recommendations: health.recommendations,
+  };
+}
+
+function readinessSummary(db: LoopbreakerDb, issueId: string) {
+  const state = substrate(db, issueId);
+  return {
+    issue_id: issueId,
+    shape: state.shape,
+    planning: planningSummary(state.planning),
+    planning_review: state.planning_review,
+    implementation: { admitted: state.shape.ready && state.planning.ready && state.planning_review.approved },
+    shipping: state.shipping,
   };
 }
 
@@ -168,6 +213,7 @@ function dashboard(db: LoopbreakerDb) {
         review: state.review.complete ? "complete" : state.review.next_action,
         shipping: state.shipping.disposition,
         planning: `${state.planning.score}/100 ${state.planning.ready ? "ready" : "blocked"}`,
+        planning_review: state.planning_review.disposition,
         unresolved_behaviors: state.shipping.unresolved_behavior_ids.length,
       };
     }),
@@ -261,10 +307,51 @@ async function main(): Promise<void> {
       output(planningSummary(recordPlanning(db, issueId, planningFromUnknown(embedded ?? value))), db, [`loopbreaker health ${issueId}`]);
       return;
     }
+    if (command === "shape") {
+      const issueId = positional[1];
+      const file = positional[2];
+      if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
+      if (!file) throw new DomainError("missing_file", "A shape JSON file is required.");
+      let value: unknown;
+      try { value = JSON.parse(readFileSync(file, "utf8")); }
+      catch (error) { throw new DomainError("invalid_shape_file", `Could not read shape JSON: ${error instanceof Error ? error.message : String(error)}`); }
+      const embedded = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>).shape : undefined;
+      output(recordShape(db, issueId, shapeFromUnknown(embedded ?? value)), db, [`loopbreaker readiness ${issueId}`]);
+      return;
+    }
     if (command === "health") {
       const issueId = positional[1];
       if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
       output(planningSummary(planningHealth(db, issueId)), db);
+      return;
+    }
+    if (command === "readiness") {
+      const issueId = positional[1];
+      if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
+      output(readinessSummary(db, issueId), db);
+      return;
+    }
+    if (command === "plan-pass") {
+      const issueId = positional[1];
+      if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
+      const passNumber = Number(required(flags, "pass"));
+      const verdict = oneOf(required(flags, "verdict"), ["approved", "changes_required", "rescope", "return_to_shaping"] as const, "--verdict");
+      output(recordPlanningReviewPass(db, { issueId, passNumber, verdict, summary: required(flags, "summary") }), db);
+      return;
+    }
+    if (command === "plan-finding") {
+      const issueId = positional[1];
+      if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
+      output(upsertPlanningFinding(db, {
+        issueId, findingId: required(flags, "id"),
+        stage: oneOf(required(flags, "stage"), ["shape", "planning"] as const, "--stage"),
+        severity: oneOf(required(flags, "severity"), ["P0", "P1", "P2", "P3"] as const, "--severity"),
+        status: oneOf(required(flags, "status"), ["open", "repaired", "accepted_debt"] as const, "--status"),
+        title: required(flags, "title"), reviewPassNumber: typeof flags.pass === "string" ? Number(flags.pass) : undefined,
+        reachability: typeof flags.reachability === "string" ? flags.reachability : undefined,
+        impact: typeof flags.impact === "string" ? flags.impact : undefined,
+        smallestFix: typeof flags["smallest-fix"] === "string" ? flags["smallest-fix"] : undefined,
+      }), db);
       return;
     }
     if (command === "substrate") {
@@ -333,5 +420,5 @@ async function main(): Promise<void> {
 main().catch((error) => {
   const known = error instanceof DomainError;
   process.stdout.write(`${failure(known ? error.code : "internal_error", error instanceof Error ? error.message : String(error), known ? error.hint : undefined)}\n`);
-  process.exitCode = known && ["missing_flag", "missing_issue", "missing_behavior", "missing_file", "invalid_value", "unknown_command", "invalid_port", "invalid_contract_file", "invalid_contract", "invalid_plan_file", "invalid_plan"].includes(error.code) ? 2 : 1;
+  process.exitCode = known && ["missing_flag", "missing_issue", "missing_behavior", "missing_file", "invalid_value", "unknown_command", "invalid_port", "invalid_contract_file", "invalid_contract", "invalid_plan_file", "invalid_plan", "invalid_shape_file", "invalid_shape"].includes(error.code) ? 2 : 1;
 });

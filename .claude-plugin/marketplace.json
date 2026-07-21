@@ -1,0 +1,15 @@
+{
+  "name": "loopbreaker",
+  "description": "Bounded agent delivery from shaping through review: five skills and a local MCP behavior contract.",
+  "owner": {
+    "name": "Rordi",
+    "url": "https://github.com/rordi-ai"
+  },
+  "plugins": [
+    {
+      "name": "loopbreaker",
+      "source": ".",
+      "description": "Shape, score, plan, implement, and review software against a local behavior contract with bounded review and explicit shipping decisions."
+    }
+  ]
+}

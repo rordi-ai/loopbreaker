@@ -1,0 +1,16 @@
+{
+  "problem": "A replay can duplicate a user-visible effect.",
+  "appetite": "One focused delivery slice.",
+  "smallest_slice": "Persist acceptance and carry one idempotency key through the wired effect boundary.",
+  "non_goals": ["Redesigning the external SDK"],
+  "success_signal": "Two wired deliveries create one external effect.",
+  "reversibility": "Disable replay reuse and return to the cold path.",
+  "decision_owner": "Issue owner",
+  "risks": [
+    {
+      "risk": "The SDK may ignore idempotency.",
+      "mitigation": "Retain the cold-path rollback."
+    }
+  ],
+  "disposition": "proceed"
+}

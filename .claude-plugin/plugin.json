@@ -1,0 +1,23 @@
+{
+  "name": "loopbreaker",
+  "displayName": "Loopbreaker",
+  "version": "0.4.0",
+  "description": "Shape, score, plan, implement, and review software against a local behavior contract with bounded review and explicit shipping decisions.",
+  "author": {
+    "name": "Rordi",
+    "url": "https://github.com/rordi-ai"
+  },
+  "homepage": "https://github.com/rordi-ai/loopbreaker",
+  "repository": "https://github.com/rordi-ai/loopbreaker",
+  "license": "MIT",
+  "keywords": ["agents", "planning", "mcp", "code-review", "sqlite"],
+  "mcpServers": {
+    "loopbreaker": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/server.bundle.mjs"],
+      "env": {
+        "LOOPBREAKER_DB": "${CLAUDE_PROJECT_DIR}/.loopbreaker/loopbreaker.db"
+      }
+    }
+  }
+}

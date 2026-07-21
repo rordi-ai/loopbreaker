@@ -78,6 +78,8 @@ button:hover { border-color: var(--blue); background: var(--blue-soft); transfor
 .workflow-node.tone-amber { border-top-color: var(--amber); }
 .workflow-node.tone-blue { border-top-color: var(--blue); }
 .workflow-node.kind-planning { background: #151b17; }
+.workflow-node.kind-shape { background: #171a20; }
+.workflow-node.kind-planning-review { background: #19171f; }
 .workflow-node.kind-decision { background: #171c18; box-shadow: 0 18px 55px rgba(0,0,0,.42); }
 .workflow-node.kind-pass { width: 340px; }
 .node-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.018); }

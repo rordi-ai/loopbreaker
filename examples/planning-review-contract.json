@@ -1,0 +1,87 @@
+{
+  "issue_id": "LB-16",
+  "title": "Review shape and planning before implementation",
+  "description": "Add a persisted shape decision and bounded semantic planning review ahead of implementation. The deterministic health score remains structural evidence, while an independent review decides whether the shape and plan cohere. Non-goals: AI-scored product taste, self-approval by authoring skills, or another unbounded review loop.",
+  "behaviors": [
+    {
+      "id": "LB-16-B1",
+      "title": "Persist an explicit shape decision",
+      "trigger": "A shaped issue is submitted for planning",
+      "expected": "Loopbreaker stores the problem, appetite, smallest slice, non-goals, success signal, reversibility, owner, risks, and exactly one disposition; only proceed releases the shape gate",
+      "verify": "Exercise proceed, spike, park, reject, incomplete, idempotent, and frozen shape records through the domain API"
+    },
+    {
+      "id": "LB-16-B2",
+      "title": "Bound semantic planning review to two plus one",
+      "trigger": "A planning-ready issue is submitted for independent review",
+      "expected": "The reviewer records stable shape/planning findings and at most comprehensive, repair-verification, and decision-only passes with no automatic pass four",
+      "verify": "Run pass ordering, finding stability, approval, re-scope, return-to-shaping, and pass-four rejection fixtures"
+    },
+    {
+      "id": "LB-16-B3",
+      "title": "Enforce the complete authority chain",
+      "trigger": "Implementation, code review, or shipping is considered",
+      "expected": "Authority is evaluated in order as shape proceed, planning health ready, planning review approved, then behavior verification or waiver; later gates cannot average away earlier failures",
+      "verify": "Drive one issue through every gate and prove pass one plus shipping remain held at the exact active authority until it clears"
+    },
+    {
+      "id": "LB-16-B4",
+      "title": "Expose an independent review-planning agent workflow",
+      "trigger": "A builder invokes the CLI or an agent invokes the new skill and MCP tools",
+      "expected": "The review-planning skill loads persisted readiness, reviews without editing the authored contract, records stable findings and bounded passes, and reports exact authority state",
+      "verify": "Discover and call the built CLI/MCP tools, validate the skill package, and forward-test the skill in a clean agent context"
+    },
+    {
+      "id": "LB-16-B5",
+      "title": "Visualize and migrate the expanded readiness graph",
+      "trigger": "A builder opens an existing or newly shaped issue",
+      "expected": "The graph shows shape, planning health, planning review, implementation contract, review passes, and shipping in order; legacy issues can backfill missing pre-implementation authority without rewriting prior evidence",
+      "verify": "Inspect blocked and approved graphs in a real browser, run legacy migrations and backfills, then complete the full repository and package verification suite"
+    }
+  ],
+  "planning": {
+    "outcome": "An independent bounded review establishes that product shape and implementation planning cohere before code begins.",
+    "appetite": "One focused schema, domain, CLI, MCP, skill, graph, migration, and live-proof slice.",
+    "non_goals": [
+      "AI-scored product taste",
+      "Allowing authoring skills to self-approve",
+      "More than three planning-review passes"
+    ],
+    "work_units": [
+      {
+        "id": "readiness-domain",
+        "title": "Persist and derive shape plus planning-review authority",
+        "behavior_ids": ["LB-16-B1", "LB-16-B2", "LB-16-B3", "LB-16-B5"],
+        "done_when": "Every ordered gate is persisted, bounded, migrated, and enforced."
+      },
+      {
+        "id": "readiness-surfaces",
+        "title": "Expose CLI and MCP review surfaces",
+        "behavior_ids": ["LB-16-B4"],
+        "done_when": "Agents can inspect readiness and record shape, findings, and passes through compact TOON tools."
+      },
+      {
+        "id": "readiness-skill-graph",
+        "title": "Ship the reviewer skill and authority graph",
+        "behavior_ids": ["LB-16-B4", "LB-16-B5"],
+        "done_when": "A clean agent and real browser can follow the same persisted authority chain."
+      }
+    ],
+    "proofs": [
+      { "behavior_id": "LB-16-B1", "tier": "wired", "method": "Exercise shape records and freeze behavior in domain tests plus built CLI." },
+      { "behavior_id": "LB-16-B2", "tier": "wired", "method": "Exercise every planning-review pass and finding transition against SQLite." },
+      { "behavior_id": "LB-16-B3", "tier": "wired", "method": "Drive a real database through each ordered authority and inspect exact gate state." },
+      { "behavior_id": "LB-16-B4", "tier": "live", "method": "Call the bundled MCP server and forward-test the installed review-planning skill." },
+      { "behavior_id": "LB-16-B5", "tier": "live", "method": "Inspect blocked and approved graphs with agent-browser and run full migration/package verification." }
+    ],
+    "production_wiring": "The SQLite domain substrate feeds readiness derivation, pass admission, shipping, CLI, MCP, HTTP/WebSocket refresh, the React Flow graph, and all five shipped skills.",
+    "rollback": "Disable shape and planning-review enforcement while retaining their tables and records; planning health and behavior verification remain intact.",
+    "migration": "Create shape_assessments, planning_review_passes, and planning_findings idempotently; allow one backfill path for legacy issues before freezing authority.",
+    "decision_owner": "Issue owner or named human approver",
+    "risks": [
+      { "risk": "The new reviewer becomes another endless loop.", "mitigation": "Use two-plus-one passes, stable findings, terminal pass-three dispositions, and no pass four." },
+      { "risk": "A planning score is mistaken for semantic approval.", "mitigation": "Keep planning health and planning-review approval as separate conjunctive authorities." },
+      { "risk": "Legacy shipped issues become permanently blocked.", "mitigation": "Permit explicit one-time backfills without rewriting existing review or evidence." }
+    ]
+  }
+}

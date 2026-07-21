@@ -23,7 +23,10 @@ not a feature spec and not a backlog.
    conclusion, not an omitted section.
 5. Propose the smallest slice that tests the bet and explicitly name non-goals.
 6. Define a measurable success signal that is stronger than “it shipped.”
-7. Recommend exactly one disposition: `shape`, `spike`, `park`, or `reject`.
+7. Recommend exactly one disposition: `proceed`, `spike`, `park`, or `reject`.
+8. When an issue contract exists, persist the packet with `shape_record`. This
+   authoring action does not approve planning; a separate `$review-planning` agent
+   owns that decision.
 
 Ask only for product judgment that cannot be learned from available context. Batch
 at most four independent questions. Lead with a recommendation and concrete

@@ -1,0 +1,20 @@
+{
+  "problem": "A deterministic planning score can prove structural completeness but cannot decide whether the shape and plan cohere, while an unbounded semantic reviewer can prevent shipping forever.",
+  "appetite": "One bounded authority layer spanning schema, domain, CLI, MCP, skill, visualization, migration, and live proof.",
+  "smallest_slice": "Persist one explicit shape disposition and one independent two-plus-one planning-review ledger ahead of implementation admission.",
+  "non_goals": [
+    "AI-scored product taste",
+    "Self-approval by authoring skills",
+    "A fourth automatic review pass"
+  ],
+  "success_signal": "A clean agent can inspect the ordered authority, approve or redirect planning in at most three passes, and implementation remains held until approval.",
+  "reversibility": "Disable enforcement while retaining the new records; planning health and behavior verification remain intact.",
+  "decision_owner": "Issue owner or named human approver",
+  "risks": [
+    {
+      "risk": "The planning reviewer becomes another endless loop.",
+      "mitigation": "Use stable findings, two repair-aware passes, a decision-only third pass, and reject pass four."
+    }
+  ],
+  "disposition": "proceed"
+}

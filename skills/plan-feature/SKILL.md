@@ -42,8 +42,12 @@ use `$shape-strategy` instead of planning competing interpretations.
    pre-review profile with `planning_record`. Call `planning_health` and repair every
    named blocker. Do not start implementation unless `ready: true`; a score of 80+
    cannot average away a hard blocker.
-9. Read `review_substrate` and confirm `enforced_by_default: true` plus the persisted
-   planning score before implementation.
+9. After the issue exists, persist the incoming shape packet with `shape_record`.
+   Preserve its author's disposition; do not silently convert `spike`, `park`, or
+   `reject` into `proceed`.
+10. Read `review_substrate` and confirm `enforced_by_default: true` plus the persisted
+   planning score. Hand the frozen artifact to a separate `$review-planning` agent.
+   Plan authoring does not approve implementation.
 
 Do not add requirements from a parent bet after the behavior surface is frozen.
 If a new requirement is real, re-scope explicitly into a new issue or revise the
@@ -108,3 +112,5 @@ Lead with the frozen contract and include:
 5. Literal verification commands or UI actions.
 6. The `review_substrate` result confirming the imported contract.
 7. The `planning_health` score, five dimensions, zero blockers, and `ready: true`.
+8. The explicit handoff to `$review-planning`; implementation remains held until its
+   persisted approval.

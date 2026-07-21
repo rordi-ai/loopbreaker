@@ -1,7 +1,7 @@
 import { Handle, NodeToolbar, Position, type Node, type NodeProps } from "@xyflow/react";
 
 export type WorkflowNodeData = Record<string, unknown> & {
-  kind: "issue" | "planning" | "behavior" | "evidence" | "finding" | "pass" | "decision";
+  kind: "issue" | "shape" | "planning" | "planning-review" | "behavior" | "evidence" | "finding" | "pass" | "decision";
   eyebrow: string;
   title: string;
   status: string;

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Planning"
+  short_description: "Approve shape and planning without review loops"
+  default_prompt: "Use $review-planning to assess shape and planning readiness before implementation."

@@ -4,8 +4,8 @@
 
 Loopbreaker is the small public demo extracted from a deeper review-and-shipping
 feature embedded in [Rordi](https://github.com/rordi-ai). It stores an issue's
-planning health, acceptance behaviors, attributable evidence, findings, bounded
-review passes, and human waivers in local SQLite; exposes the same substrate to
+shape decision, planning health, independent planning approval, acceptance behaviors,
+attributable evidence, findings, bounded review passes, and human waivers in local SQLite; exposes the same substrate to
 agents through MCP; and renders the ordered gates as a live workflow graph.
 
 The hard-won lesson behind it: **review convergence and shipping readiness are
@@ -13,13 +13,15 @@ different facts**. A reviewer can finish checking a repair while a required
 behavior still lacks production-relevant proof. Conflating those facts caused
 review loops to grow indefinitely. A second lesson followed: a verification gate
 cannot rescue an issue whose scope, work ownership, proof plan, production wiring,
-or rollback was never made explicit. Loopbreaker makes all three states explicit:
-planning readiness, review convergence, and shipping readiness.
+or rollback was never made explicit. Loopbreaker makes the distinct authorities
+explicit: shape, structural planning health, semantic planning approval,
+implementation review, and shipping readiness.
 
-It now packages the complete public workflow as four reusable agent skills:
+It now packages the complete public workflow as five reusable agent skills:
 
 - `shape-strategy` — frame appetite, reversibility, smallest slice, and success.
 - `plan-feature` — freeze enforced behaviors and reach healthy planning.
+- `review-planning` — independently approve or redirect shape and planning in at most three passes.
 - `implement-feature` — build only a planning-ready contract and record evidence.
 - `review-invariants` — enforce planning preflight, two-plus-one review, and ship authority.
 
@@ -67,7 +69,7 @@ it with `--db PATH` or `LOOPBREAKER_DB`.
 ## Install as a Codex plugin
 
 The repository is a complete plugin: [.codex-plugin/plugin.json](.codex-plugin/plugin.json)
-registers the four skills and [.mcp.json](.mcp.json) starts the bundled local MCP
+registers the five skills and [.mcp.json](.mcp.json) starts the bundled local MCP
 server. No TypeScript runtime is needed after the repository has been built.
 
 ```sh
@@ -78,6 +80,29 @@ pnpm build
 The generated `mcp/server.bundle.mjs` is the plugin entry point. Set
 `LOOPBREAKER_DB` in your MCP environment when you want an explicit database path;
 otherwise the server uses `.loopbreaker/loopbreaker.db` under its working directory.
+
+## Install as a Claude Code plugin
+
+The same repository is also a Claude Code plugin:
+[.claude-plugin/plugin.json](.claude-plugin/plugin.json) starts the bundled MCP
+server (database at `.loopbreaker/loopbreaker.db` under the current project), and
+the five skills under [skills/](skills/) are auto-discovered as
+`/loopbreaker:<skill-name>`.
+
+```sh
+pnpm install && pnpm build
+claude --plugin-dir /path/to/loopbreaker
+```
+
+Or install it persistently from GitHub:
+
+```text
+/plugin marketplace add rordi-ai/loopbreaker
+/plugin install loopbreaker@loopbreaker
+```
+
+Working inside this repository needs no install at all: the project-scope
+[.mcp.json](.mcp.json) loads the same bundled server directly.
 
 ## Use it with any MCP client
 
@@ -99,14 +124,18 @@ Build the repo, then add this local stdio server to your MCP client config:
 }
 ```
 
-The server tells agents to check planning health before implementation or review,
-load the substrate, and check ship status separately. It exposes eleven focused tools:
+The server tells agents to read the ordered delivery authority before implementation
+or review, load the substrate, and check ship status separately. It exposes fifteen focused tools:
 
 | Tool | Purpose |
 | --- | --- |
 | `review_import_contract` | Import behavior children; enforced unless explicitly advisory |
+| `shape_record` | Persist the explicit proceed, spike, park, or reject shape decision |
 | `planning_record` | Record a partial or complete pre-review planning profile |
 | `planning_health` | Read score, five dimensions, blockers, and readiness |
+| `delivery_readiness` | Read shape → planning → planning-review → implementation → shipping authority |
+| `planning_review_upsert_finding` | Preserve a stable semantic shape/planning finding |
+| `planning_review_record_pass` | Record the next independent planning-review pass, limited to 1–3 |
 | `review_list_issues` | List derived review and shipping states |
 | `review_substrate` | Read the complete frozen review surface |
 | `review_upsert_finding` | Preserve one stable row per review root cause |
@@ -128,7 +157,9 @@ Start from [examples/issue-contract.json](examples/issue-contract.json):
 
 ```sh
 node dist/cli.js import examples/issue-contract.json --db my-review.db
+node dist/cli.js shape APP-42 examples/shape.json --db my-review.db
 node dist/cli.js health APP-42 --db my-review.db
+node dist/cli.js readiness APP-42 --db my-review.db
 node dist/cli.js substrate APP-42 --db my-review.db
 ```
 
@@ -142,11 +173,14 @@ scope, contract quality, work-unit traceability, proof design, and operability.
 Readiness requires both a score of at least 80 and zero hard blockers. Missing
 behavior ownership, wired/live proof, production wiring, or rollback cannot be
 averaged away. Partial profiles are accepted so the tool can return actionable
-blockers; `loopbreaker health ISSUE` is the compact preflight surface.
+blockers; `loopbreaker health ISSUE` is the structural surface and
+`loopbreaker readiness ISSUE` is the ordered admission surface. A 100/100 plan
+still cannot admit implementation until an independent bounded planning review
+records `approved`.
 
 ## The decision model
 
-Review is bounded to a two-plus-one budget:
+Both planning review and implementation review are bounded to a two-plus-one budget:
 
 1. **Comprehensive** — find the coherent set of issues against the frozen contract.
 2. **Repair verification** — check admitted repairs and repair regressions.
@@ -157,10 +191,12 @@ case grants permission to ship.
 
 Shipping is derived through ordered authorities:
 
-- planning `hold`: planning health is not ready;
-- verification `hold`: planning is ready but an enforced behavior is unresolved;
-- `ship`: planning is ready and every enforced behavior is verified;
-- `ship_with_debt`: planning is ready and every unverified enforced behavior has an explicit waiver.
+- shape `hold`: the explicit shape is missing, incomplete, or not `proceed`;
+- planning `hold`: structural planning health is not ready;
+- planning-review `hold`: semantic review has not independently approved implementation;
+- verification `hold`: earlier gates are ready but an enforced behavior is unresolved;
+- `ship`: all earlier gates are ready and every enforced behavior is verified;
+- `ship_with_debt`: all earlier gates are ready and every unverified enforced behavior has an explicit waiver.
 
 This keeps reviewer verdicts as evidence supporting the acceptance contract,
 instead of creating a hidden parallel gate.
@@ -169,7 +205,7 @@ instead of creating a hidden parallel gate.
 
 ```text
 CLI (TOON) ─┐
-            ├── planning evaluator + domain rules ── SQLite/WAL
+            ├── ordered authority + domain rules ── SQLite/WAL
 MCP (stdio) ┤        │
             └── HTTP API ── data-version watcher ── WebSocket
                      │                            │
@@ -192,8 +228,12 @@ loopbreaker                         live issue dashboard
 loopbreaker init                    initialize SQLite
 loopbreaker demo                    seed the synthetic incident
 loopbreaker import FILE             import a behavior contract
+loopbreaker shape ISSUE FILE        record an explicit shape decision
 loopbreaker plan ISSUE FILE         record a planning profile
 loopbreaker health ISSUE            inspect compact planning health
+loopbreaker readiness ISSUE         inspect ordered delivery authority
+loopbreaker plan-pass ISSUE ...     record planning-review pass 1, 2, or 3
+loopbreaker plan-finding ISSUE ...  preserve one stable planning finding
 loopbreaker substrate ISSUE         inspect the complete substrate
 loopbreaker pass ISSUE ...          record pass 1, 2, or 3
 loopbreaker evidence ISSUE ...      attach proportionate proof

@@ -74,10 +74,12 @@ try {
   assert.equal(state.review.complete, true);
   assert.equal(state.planning.score, 100);
   assert.equal(state.planning.ready, true);
+  assert.equal(state.shape.ready, true);
+  assert.equal(state.planning_review.approved, true);
   assert.equal(state.shipping.gate, "verification");
   assert.equal(state.shipping.disposition, "hold", "review completion must not silently authorize shipping");
 
-  process.stdout.write(`Live surface verified: React served; planning is 100/100; external CLI change reached WebSocket in <=2s; review is complete while verification still holds shipping.\n`);
+  process.stdout.write(`Live surface verified: React served; shape and planning review are approved; planning is 100/100; external CLI change reached WebSocket in <=2s; code review is complete while verification still holds shipping.\n`);
 } finally {
   socket?.terminate();
   await server.close();

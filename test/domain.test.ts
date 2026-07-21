@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { LoopbreakerDb } from "../src/db.js";
-import { createWaiver, DomainError, importContract, planningHealth, recordEvidence, recordPass, recordPlanning, substrate, upsertFinding, verifyBehavior } from "../src/domain.js";
-import type { PlanningProfile } from "../src/types.js";
+import { createWaiver, DomainError, importContract, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertFinding, upsertPlanningFinding, verifyBehavior } from "../src/domain.js";
+import type { PlanningProfile, ShapeProfile } from "../src/types.js";
 import { DEMO_ISSUE, seedDemo } from "../src/seed.js";
 
 const databases: LoopbreakerDb[] = [];
@@ -29,6 +29,20 @@ function healthyPlanning(behaviorIds: string[]): PlanningProfile {
     decision_owner: "Issue owner",
     risks: [],
   };
+}
+
+function healthyShape(disposition: ShapeProfile["disposition"] = "proceed"): ShapeProfile {
+  return {
+    problem: "A bounded user-visible problem exists.", appetite: "One focused slice.",
+    smallest_slice: "Implement one observable behavior.", non_goals: ["Unrelated redesign"],
+    success_signal: "The wired behavior passes.", reversibility: "Disable the new entry point.",
+    decision_owner: "Issue owner", risks: [], disposition,
+  };
+}
+
+function admitImplementation(db: LoopbreakerDb, issueId: string): void {
+  recordShape(db, issueId, healthyShape());
+  recordPlanningReviewPass(db, { issueId, passNumber: 1, verdict: "approved", summary: "Shape and plan cohere." });
 }
 
 afterEach(() => {
@@ -143,6 +157,7 @@ describe("bounded review and shipping authority", () => {
       planning: healthyPlanning(["APP-B1"]),
     });
     expect(contract.behaviors.map((item) => item.enforced)).toEqual([1, 0]);
+    admitImplementation(db, "APP-42");
     recordPass(db, { issueId: "APP-42", passNumber: 1, verdict: "fail", summary: "One finding." });
     expect(() => importContract(db, {
       issueId: "APP-42",
@@ -180,7 +195,7 @@ describe("bounded review and shipping authority", () => {
     ]);
   });
 
-  it("holds pass one and shipping until planning is healthy, then releases only the planning gate", () => {
+  it("holds implementation at each ordered authority until independently approved", () => {
     const db = database();
     importContract(db, {
       issueId: "PLAN-2",
@@ -188,6 +203,8 @@ describe("bounded review and shipping authority", () => {
       description: "Planning and verification are ordered gates.",
       behaviors: [{ id: "PLAN-B2", title: "Do it", trigger: "A request arrives.", expected: "It completes.", verify: "Exercise the wired request." }],
     });
+    expect(() => recordPass(db, { issueId: "PLAN-2", passNumber: 1, verdict: "pass", summary: "Looks good." })).toThrowError(/shape disposition/i);
+    recordShape(db, "PLAN-2", healthyShape());
     expect(() => recordPass(db, { issueId: "PLAN-2", passNumber: 1, verdict: "pass", summary: "Looks good." })).toThrowError(/planning health/i);
     const evidence = recordEvidence(db, { issueId: "PLAN-2", behaviorId: "PLAN-B2", tier: "wired", verdict: "pass", summary: "Wired proof." }).evidence.at(-1)!;
     expect(verifyBehavior(db, "PLAN-B2", evidence.id).shipping.gate).toBe("planning");
@@ -195,6 +212,9 @@ describe("bounded review and shipping authority", () => {
     const health = recordPlanning(db, "PLAN-2", healthyPlanning(["PLAN-B2"]));
     expect(health.score).toBe(100);
     expect(health.ready).toBe(true);
+    expect(substrate(db, "PLAN-2").shipping.gate).toBe("planning_review");
+    expect(() => recordPass(db, { issueId: "PLAN-2", passNumber: 1, verdict: "pass", summary: "Looks good." })).toThrowError(/independent planning review/i);
+    recordPlanningReviewPass(db, { issueId: "PLAN-2", passNumber: 1, verdict: "approved", summary: "Coherent." });
     expect(substrate(db, "PLAN-2").shipping).toMatchObject({ disposition: "ship", gate: "ready", planning_score: 100 });
   });
 
@@ -207,7 +227,7 @@ describe("bounded review and shipping authority", () => {
       behaviors: [{ id: "PLAN-B3", title: "Do it", trigger: "A request arrives.", expected: "It completes.", verify: "Exercise the wired request." }],
       planning: healthyPlanning(["PLAN-B3"]),
     });
-    recordPass(db, { issueId: "PLAN-3", passNumber: 1, verdict: "pass", summary: "Plan and implementation align." });
+    admitImplementation(db, "PLAN-3");
     expect(recordPlanning(db, "PLAN-3", healthyPlanning(["PLAN-B3"]))).toMatchObject({ ready: true, score: 100 });
     expect(() => recordPlanning(db, "PLAN-3", { ...healthyPlanning(["PLAN-B3"]), appetite: "Expanded scope." })).toThrowError(/cannot change silently/);
   });
@@ -225,7 +245,7 @@ describe("bounded review and shipping authority", () => {
     });
     expect(state.planning).toMatchObject({ score: 95, ready: false, grade: "at_risk" });
     expect(state.planning.blockers.map((blocker) => blocker.code)).toEqual(["missing_rollback"]);
-    expect(state.shipping.gate).toBe("planning");
+    expect(state.shipping.gate).toBe("shape");
   });
 
   it("allows one legacy planning backfill after review and freezes it afterward", () => {
@@ -237,9 +257,13 @@ describe("bounded review and shipping authority", () => {
       INSERT INTO review_passes (id, issue_id, pass_number, kind, verdict, summary)
       VALUES ('LEGACY-P1', 'LEGACY-1', 1, 'comprehensive', 'pass', 'Legacy review completed.');
     `);
-    expect(substrate(db, "LEGACY-1").shipping.gate).toBe("planning");
+    expect(substrate(db, "LEGACY-1").shipping.gate).toBe("shape");
     expect(recordPass(db, { issueId: "LEGACY-1", passNumber: 1, verdict: "pass", summary: "Legacy review completed." }).review.pass_count).toBe(1);
+    expect(() => recordPass(db, { issueId: "LEGACY-1", passNumber: 2, verdict: "pass", summary: "Must not continue yet." })).toThrowError(/shape disposition/i);
     expect(recordPlanning(db, "LEGACY-1", healthyPlanning(["LEGACY-B1"])).ready).toBe(true);
+    recordShape(db, "LEGACY-1", healthyShape());
+    expect(() => recordPass(db, { issueId: "LEGACY-1", passNumber: 2, verdict: "pass", summary: "Must not continue yet." })).toThrowError(/independent planning review/i);
+    recordPlanningReviewPass(db, { issueId: "LEGACY-1", passNumber: 1, verdict: "approved", summary: "Legacy planning backfill approved." });
     expect(() => recordPlanning(db, "LEGACY-1", { ...healthyPlanning(["LEGACY-B1"]), appetite: "Changed." })).toThrowError(/cannot change silently/);
   });
 
@@ -270,6 +294,7 @@ describe("bounded review and shipping authority", () => {
     });
     expect(state.findings.filter((item) => item.id === "B3:duplicate-effect:sdk-boundary")).toHaveLength(1);
     expect(state.findings.find((item) => item.id === "B3:duplicate-effect:sdk-boundary")?.status).toBe("repaired");
+    expect(state.findings.find((item) => item.id === "B3:duplicate-effect:sdk-boundary")?.blocker_reachability).toBe("Restart after persistence.");
   });
 
   it("rejects a vague open P1 that fails the blocker test", () => {
@@ -282,5 +307,55 @@ describe("bounded review and shipping authority", () => {
       status: "open",
       title: "This might be risky",
     })).toThrowError(/requires behavior attribution/);
+  });
+
+  it("persists explicit non-proceed shape decisions without releasing the gate", () => {
+    const db = database();
+    importContract(db, {
+      issueId: "SHAPE-1", title: "Shape a slice",
+      behaviors: [{ id: "SHAPE-B1", title: "Do it", trigger: "Requested", expected: "Done", verify: "Run wired proof" }],
+      planning: healthyPlanning(["SHAPE-B1"]),
+    });
+    for (const disposition of ["spike", "park", "reject"] as const) {
+      expect(recordShape(db, "SHAPE-1", healthyShape(disposition))).toMatchObject({ ready: false, blockers: [{ code: `shape_${disposition}` }] });
+    }
+    expect(recordShape(db, "SHAPE-1", { ...healthyShape(), success_signal: "" })).toMatchObject({ ready: false, blockers: [{ code: "incomplete_shape" }] });
+    expect(substrate(db, "SHAPE-1").shipping.gate).toBe("shape");
+  });
+
+  it("bounds independent planning review to comprehensive, repair, and decision", () => {
+    const db = database();
+    importContract(db, {
+      issueId: "PREVIEW-1", title: "Review one plan",
+      behaviors: [{ id: "PREVIEW-B1", title: "Do it", trigger: "Requested", expected: "Done", verify: "Run wired proof" }],
+      planning: healthyPlanning(["PREVIEW-B1"]),
+    });
+    recordShape(db, "PREVIEW-1", healthyShape());
+    recordPlanningReviewPass(db, { issueId: "PREVIEW-1", passNumber: 1, verdict: "changes_required", summary: "One root cause." });
+    upsertPlanningFinding(db, {
+      issueId: "PREVIEW-1", findingId: "PREVIEW-F1", reviewPassNumber: 1, stage: "planning", severity: "P1", status: "open",
+      title: "Wiring is ambiguous", reachability: "The work unit reaches production.", impact: "The behavior may exist only in tests.", smallestFix: "Name the production constructor.",
+    });
+    expect(() => recordPlanningReviewPass(db, { issueId: "PREVIEW-1", passNumber: 2, verdict: "approved", summary: "Fixed." })).toThrowError(/open P0\/P1/);
+    upsertPlanningFinding(db, { issueId: "PREVIEW-1", findingId: "PREVIEW-F1", stage: "planning", severity: "P1", status: "repaired", title: "Wiring is ambiguous" });
+    expect(substrate(db, "PREVIEW-1").planning_findings[0]?.reachability).toBe("The work unit reaches production.");
+    recordPlanningReviewPass(db, { issueId: "PREVIEW-1", passNumber: 2, verdict: "changes_required", summary: "Repair did not close proof." });
+    const state = recordPlanningReviewPass(db, { issueId: "PREVIEW-1", passNumber: 3, verdict: "rescope", summary: "Decision-only split." });
+    expect(state.planning_review).toMatchObject({ complete: true, approved: false, disposition: "rescope", automatic_pass_four: false });
+    expect(() => recordPlanningReviewPass(db, { issueId: "PREVIEW-1", passNumber: 4, verdict: "approved", summary: "Again." })).toThrowError(/limited to 1, 2, and 3/);
+  });
+
+  it("freezes shape and planning at planning-review pass one while allowing exact replay", () => {
+    const db = database();
+    importContract(db, {
+      issueId: "PREVIEW-2", title: "Freeze planning",
+      behaviors: [{ id: "PREVIEW-B2", title: "Do it", trigger: "Requested", expected: "Done", verify: "Run wired proof" }],
+      planning: healthyPlanning(["PREVIEW-B2"]),
+    });
+    recordShape(db, "PREVIEW-2", healthyShape());
+    recordPlanningReviewPass(db, { issueId: "PREVIEW-2", passNumber: 1, verdict: "approved", summary: "Coherent." });
+    expect(recordShape(db, "PREVIEW-2", healthyShape()).ready).toBe(true);
+    expect(() => recordShape(db, "PREVIEW-2", { ...healthyShape(), appetite: "Changed." })).toThrowError(/cannot change silently/);
+    expect(() => recordPlanning(db, "PREVIEW-2", { ...healthyPlanning(["PREVIEW-B2"]), appetite: "Changed." })).toThrowError(/cannot change silently/);
   });
 });

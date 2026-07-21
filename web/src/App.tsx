@@ -136,7 +136,7 @@ export function App() {
         <div>
           <span className="product-kicker">LOCAL REVIEW GRAPH</span>
           <h1>Loopbreaker</h1>
-          <p>Inspect planning health, review convergence, and the active shipping gate.</p>
+          <p>Inspect shape, planning health, independent planning approval, review convergence, and the active shipping gate.</p>
         </div>
         <div className="header-controls">
           <label>
@@ -155,7 +155,7 @@ export function App() {
         <>
           <section className={`decision-bar disposition-${decisionTone}`} data-testid="decision-bar">
             <div>
-              <span className="decision-label">{substrate.issue.id} · planning {substrate.planning.score}/100 · {substrate.review.complete ? "review complete" : `next: ${substrate.review.next_action.replaceAll("_", " ")}`}</span>
+              <span className="decision-label">{substrate.issue.id} · shape {substrate.shape.profile?.disposition ?? "missing"} · planning {substrate.planning.score}/100 · plan review {substrate.planning_review.disposition.replaceAll("_", " ")}</span>
               <h2>{substrate.issue.title}</h2>
               <p>{substrate.shipping.reason}</p>
               {demoActions ? (

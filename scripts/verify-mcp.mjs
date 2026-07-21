@@ -13,7 +13,7 @@ const pluginServer = join(root, "mcp", "server.bundle.mjs");
 
 execFileSync(process.execPath, [cli, "demo", "--db", db], { cwd: root, stdio: "ignore" });
 
-const client = new Client({ name: "loopbreaker-verifier", version: "0.3.0" });
+const client = new Client({ name: "loopbreaker-verifier", version: "0.4.0" });
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [pluginServer],
@@ -25,7 +25,7 @@ const transport = new StdioClientTransport({
 try {
   await client.connect(transport);
   const tools = await client.listTools();
-  const required = ["planning_record", "planning_health", "review_list_issues", "review_substrate", "review_upsert_finding", "review_ship_status"];
+  const required = ["shape_record", "planning_record", "planning_health", "delivery_readiness", "planning_review_upsert_finding", "planning_review_record_pass", "review_list_issues", "review_substrate", "review_upsert_finding", "review_ship_status"];
   for (const name of required) {
     if (!tools.tools.some((tool) => tool.name === name)) throw new Error(`Missing MCP tool: ${name}`);
   }
@@ -44,6 +44,16 @@ try {
   const healthResult = await client.callTool({ name: "planning_health", arguments: { issue_id: "MCP-PLAN" } });
   const healthText = healthResult.content.find((item) => item.type === "text")?.text ?? "";
   if (!healthText.includes("score:") || !healthText.includes("dimensions[5]")) throw new Error("MCP planning_health did not return five scored dimensions.");
+  const shape = await client.callTool({ name: "shape_record", arguments: { issue_id: "MCP-PLAN", shape: {
+    problem: "Agents need exact readiness.", appetite: "One fixture.", smallest_slice: "Expose the ordered gate.",
+    non_goals: ["Implementation"], success_signal: "The active gate is exact.", reversibility: "Delete the fixture.",
+    decision_owner: "Verifier", risks: [], disposition: "proceed",
+  } } });
+  const shapeText = shape.content.find((item) => item.type === "text")?.text ?? "";
+  if (!shapeText.includes("ready: true") || !shapeText.includes("disposition: proceed")) throw new Error("MCP shape_record did not persist proceed readiness.");
+  const readiness = await client.callTool({ name: "delivery_readiness", arguments: { issue_id: "MCP-PLAN" } });
+  const readinessText = readiness.content.find((item) => item.type === "text")?.text ?? "";
+  if (!readinessText.includes("gate: planning") || !readinessText.includes("admitted: false")) throw new Error("MCP readiness did not expose the ordered planning gate.");
   const finding = await client.callTool({
     name: "review_upsert_finding",
     arguments: {
@@ -63,7 +73,7 @@ try {
   if (!text.includes("disposition: hold") || !text.includes("automatic_pass_four: false")) {
     throw new Error("MCP ship status did not preserve bounded-review and hold state.");
   }
-  process.stdout.write(`MCP verified: ${tools.tools.length} tools; partial planning is blocked; DEMO-1 is verification-held with no pass 4.\n`);
+  process.stdout.write(`MCP verified: ${tools.tools.length} tools; shape is explicit; partial planning is blocked; DEMO-1 is planning-approved and verification-held with no pass 4.\n`);
 } finally {
   await client.close();
   rmSync(temp, { recursive: true, force: true });
