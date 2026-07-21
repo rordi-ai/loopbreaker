@@ -1,0 +1,20 @@
+{
+  "issue_id": "APP-42",
+  "title": "Retry one request without duplicating its effect",
+  "description": "A small example acceptance contract for Loopbreaker.",
+  "behaviors": [
+    {
+      "id": "APP-42-B1",
+      "title": "Persist acceptance before invoking the external effect"
+    },
+    {
+      "id": "APP-42-B2",
+      "title": "A replay produces the external effect exactly once"
+    },
+    {
+      "id": "APP-42-B3",
+      "title": "Show operator timing diagnostics",
+      "advisory": true
+    }
+  ]
+}

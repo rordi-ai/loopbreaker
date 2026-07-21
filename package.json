@@ -1,0 +1,49 @@
+{
+  "name": "loopbreaker",
+  "version": "0.1.0",
+  "description": "Local-first review graph for bounded agent review and explicit shipping decisions.",
+  "type": "module",
+  "bin": {
+    "loopbreaker": "dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:mcp": "pnpm build && node scripts/verify-mcp.mjs",
+    "verify": "pnpm typecheck && pnpm test && pnpm build && node scripts/verify-mcp.mjs",
+    "start": "node dist/cli.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "keywords": [
+    "mcp",
+    "code-review",
+    "sqlite",
+    "agents",
+    "shipping"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
+    "@toon-format/toon": "^2.3.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.11",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "pnpm@10.26.2"
+}
