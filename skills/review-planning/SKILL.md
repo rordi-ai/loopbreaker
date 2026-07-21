@@ -14,7 +14,8 @@ reviewing.
 
 ## State authority
 
-Start every response with these exact state lines:
+See [state authority](../shared/state-authority.md) for the full discipline. This
+skill's header emits four lines:
 
 ```text
 Shape: <exact persisted disposition and readiness>
@@ -23,10 +24,10 @@ Planning review: <exact persisted disposition and next action>
 Implementation: <admitted or held>
 ```
 
-Call `delivery_readiness`, then `review_substrate`. Persisted state is authoritative;
-never infer approval from prose or a high health score. If shape is absent, incomplete,
-or not `proceed`, stop at the shape gate. If planning health is not ready, return its
-named structural blockers. Do not begin a semantic pass until both gates are ready.
+Call `delivery_readiness`, then `review_substrate` to populate it. If shape is absent,
+incomplete, or not `proceed`, stop at the shape gate. If planning health is not ready,
+return its named structural blockers. Do not begin a semantic pass until both gates
+are ready.
 
 ## Review protocol
 

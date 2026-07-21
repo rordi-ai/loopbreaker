@@ -21230,6 +21230,11 @@ var LoopbreakerDb = class {
         smallest_fix TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS workspace (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        active_issue TEXT REFERENCES issues(id) ON DELETE SET NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_behaviors_issue ON behaviors(issue_id);
       CREATE INDEX IF NOT EXISTS idx_evidence_issue ON evidence(issue_id);
       CREATE INDEX IF NOT EXISTS idx_findings_issue ON findings(issue_id);
@@ -21301,6 +21306,22 @@ var LoopbreakerDb = class {
       INSERT INTO shape_assessments (issue_id, profile_json) VALUES (?, ?)
       ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
     `).run(issueId, JSON.stringify(profile));
+  }
+  activeIssue() {
+    const row = this.raw.prepare("SELECT active_issue FROM workspace WHERE id = 1").get();
+    return row?.active_issue ?? null;
+  }
+  setActiveIssue(issueId) {
+    this.raw.prepare(`
+      INSERT INTO workspace (id, active_issue) VALUES (1, ?)
+      ON CONFLICT(id) DO UPDATE SET active_issue = excluded.active_issue
+    `).run(issueId);
+  }
+  clearActiveIssue() {
+    this.raw.prepare(`
+      INSERT INTO workspace (id, active_issue) VALUES (1, NULL)
+      ON CONFLICT(id) DO UPDATE SET active_issue = NULL
+    `).run();
   }
 };
 function openDb(path) {
@@ -21453,9 +21474,9 @@ function planningHealth(db, issueId) {
 function recordPlanning(db, issueId, profile) {
   if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
   const current = db.planningProfile(issueId);
-  if ((db.reviewPasses(issueId).length > 0 || db.planningReviewPasses(issueId).length > 0) && current !== null) {
+  if ((db.reviewPasses(issueId).length > 0 || planningReviewState(db, issueId).approved) && current !== null) {
     if (isDeepStrictEqual(current, profile)) return planningHealth(db, issueId);
-    throw new DomainError("plan_frozen", `${issueId} already has review passes; its planning profile cannot change silently.`, "Create a new issue or explicitly re-scope before another review.");
+    throw new DomainError("plan_frozen", `${issueId} has an approved planning review or code review passes; its planning profile cannot change silently.`, "Create a new issue or explicitly re-scope before another review.");
   }
   db.setPlanningProfile(issueId, profile);
   return planningHealth(db, issueId);
@@ -21601,7 +21622,7 @@ function importContract(db, input) {
   }
   return db.transaction(() => {
     const existing = db.issue(input.issueId);
-    if (existing && (db.reviewPasses(input.issueId).length > 0 || db.planningReviewPasses(input.issueId).length > 0)) {
+    if (existing && (db.reviewPasses(input.issueId).length > 0 || planningReviewState(db, input.issueId).approved)) {
       const current = db.behaviors(input.issueId);
       const unchanged = current.length === input.behaviors.length && current.every((behavior, index) => {
         const incoming = input.behaviors[index];
@@ -21610,7 +21631,7 @@ function importContract(db, input) {
       if (!unchanged) {
         throw new DomainError(
           "contract_frozen",
-          `${input.issueId} already has review passes; its behavior acceptance surface cannot be changed silently.`,
+          `${input.issueId} has an approved planning review or code review passes; its behavior acceptance surface cannot be changed silently.`,
           "Create a new issue or explicitly re-scope before starting another review."
         );
       }
@@ -21619,7 +21640,7 @@ function importContract(db, input) {
       INSERT INTO issues (id, title, description) VALUES (?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description
     `).run(input.issueId, input.title, input.description ?? "");
-    if (!existing || db.reviewPasses(input.issueId).length === 0 && db.planningReviewPasses(input.issueId).length === 0) {
+    if (!existing || db.reviewPasses(input.issueId).length === 0 && !planningReviewState(db, input.issueId).approved) {
       db.raw.prepare("DELETE FROM behaviors WHERE issue_id = ?").run(input.issueId);
       const statement = db.raw.prepare(`
         INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal)
@@ -21640,8 +21661,8 @@ function importContract(db, input) {
     }
     if (input.planning) {
       const currentPlan = db.planningProfile(input.issueId);
-      if ((db.reviewPasses(input.issueId).length > 0 || db.planningReviewPasses(input.issueId).length > 0) && currentPlan !== null && !isDeepStrictEqual(currentPlan, input.planning)) {
-        throw new DomainError("plan_frozen", `${input.issueId} already has review passes; its planning profile cannot change silently.`);
+      if ((db.reviewPasses(input.issueId).length > 0 || planningReviewState(db, input.issueId).approved) && currentPlan !== null && !isDeepStrictEqual(currentPlan, input.planning)) {
+        throw new DomainError("plan_frozen", `${input.issueId} has an approved planning review or code review passes; its planning profile cannot change silently.`);
       }
       db.setPlanningProfile(input.issueId, input.planning);
     }
@@ -21845,6 +21866,76 @@ function createWaiver(db, input) {
   `).run(randomUUID(), input.issueId, input.behaviorId, input.rationale, input.approvedBy);
   db.raw.prepare("UPDATE behaviors SET status = 'waived' WHERE id = ?").run(input.behaviorId);
   return substrate(db, input.issueId);
+}
+
+// src/prime.ts
+function resolveIssue(db, explicit) {
+  if (explicit && explicit.trim().length > 0) return explicit;
+  const active = db.activeIssue();
+  if (!active) {
+    throw new DomainError(
+      "no_active_issue",
+      "No issue is linked for this repository and none was named.",
+      "Run loopbreaker link ISSUE, or pass an issue ID directly."
+    );
+  }
+  return active;
+}
+function nextActionFor(gate, planningReviewNextAction) {
+  switch (gate) {
+    case "shape":
+      return "record shape proceed";
+    case "planning":
+      return "reach planning health ready";
+    case "planning_review":
+      return planningReviewNextAction;
+    case "verification":
+      return "verify or waive enforced behaviors";
+    case "ready":
+      return "ship";
+    default:
+      return "ship";
+  }
+}
+function composePrime(db, issueId) {
+  const state = substrate(db, issueId);
+  const openBlockingFindings = [
+    ...state.planning_findings.filter((finding) => finding.status === "open" && (finding.severity === "P0" || finding.severity === "P1")).map((finding) => ({ id: finding.id, severity: finding.severity, title: finding.title })),
+    ...state.findings.filter((finding) => finding.status === "open" && (finding.severity === "P0" || finding.severity === "P1")).map((finding) => ({ id: finding.id, severity: finding.severity, title: finding.title }))
+  ];
+  const unverifiedEnforcedBehaviors = state.behaviors.filter((behavior) => behavior.enforced === 1 && behavior.status !== "verified" && behavior.waiver_id === null).map((behavior) => ({ id: behavior.id, title: behavior.title }));
+  return {
+    issue_id: state.issue.id,
+    authority_chain: {
+      shape: { disposition: state.shape.profile?.disposition ?? null, ready: state.shape.ready },
+      planning: { score: state.planning.score, ready: state.planning.ready },
+      planning_review: { disposition: state.planning_review.disposition, approved: state.planning_review.approved },
+      implementation: { admitted: state.shape.ready && state.planning.ready && state.planning_review.approved },
+      shipping: { disposition: state.shipping.disposition }
+    },
+    next_action: nextActionFor(state.shipping.gate, state.planning_review.next_action),
+    open_blocking_findings: openBlockingFindings,
+    unverified_enforced_behaviors: unverifiedEnforcedBehaviors
+  };
+}
+function primePayload(db, explicitIssueId) {
+  const issueId = resolveIssue(db, explicitIssueId);
+  const block = composePrime(db, issueId);
+  return { ...block, rendered: renderPrime(block) };
+}
+function renderPrime(block) {
+  const lines = [
+    `issue: ${block.issue_id}`,
+    `shape: disposition=${block.authority_chain.shape.disposition ?? "none"} ready=${block.authority_chain.shape.ready}`,
+    `planning: score=${block.authority_chain.planning.score} ready=${block.authority_chain.planning.ready}`,
+    `planning_review: disposition=${block.authority_chain.planning_review.disposition} approved=${block.authority_chain.planning_review.approved}`,
+    `implementation: admitted=${block.authority_chain.implementation.admitted}`,
+    `shipping: disposition=${block.authority_chain.shipping.disposition}`,
+    `next_action: ${block.next_action}`,
+    block.open_blocking_findings.length === 0 ? "open_blocking_findings: none" : `open_blocking_findings: ${block.open_blocking_findings.map((finding) => `${finding.id}[${finding.severity}] ${finding.title}`).join(" | ")}`,
+    block.unverified_enforced_behaviors.length === 0 ? "unverified_enforced_behaviors: none" : `unverified_enforced_behaviors: ${block.unverified_enforced_behaviors.map((behavior) => `${behavior.id} ${behavior.title}`).join(" | ")}`
+  ];
+  return lines.join("\n");
 }
 
 // node_modules/.pnpm/@toon-format+toon@2.3.1/node_modules/@toon-format/toon/dist/index.mjs
@@ -22458,6 +22549,20 @@ async function runMcp(dbPath) {
           implementation: { admitted: state.shape.ready && state.planning.ready && state.planning_review.approved },
           shipping: state.shipping
         }, db.path);
+      } catch (error2) {
+        return toolError(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "delivery_prime",
+    {
+      description: "Compose the single deterministic prime block for the active or named issue: the ordered authority chain, the single next allowed action, open blocking findings, and unverified enforced behaviors. Composed only from the database, with no advice prose.",
+      inputSchema: { issue_id: external_exports.string().min(1).optional() }
+    },
+    async ({ issue_id }) => {
+      try {
+        return content(primePayload(db, issue_id), db.path);
       } catch (error2) {
         return toolError(error2);
       }

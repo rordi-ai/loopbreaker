@@ -1,0 +1,21 @@
+{
+  "problem": "The ordered delivery authority is honor-system: skills instruct agents to check admission before implementing, but nothing mechanically prevents an agent that skips the check, and every skill restates the same state litany, which drifts.",
+  "appetite": "One bounded slice: active-issue binding, database-composed prime block, two fail-open lifecycle hooks, plugin wiring, verification, and one deduplication pass over the skills.",
+  "smallest_slice": "Deny pre-admission source edits and inject persisted gate state at session start, both computed from the existing database and shipped through the existing plugin.",
+  "non_goals": [
+    "A blocking Stop hook or exit gate",
+    "Doctrine stored in the database",
+    "Codex-side hook wiring",
+    "Session registries or servers"
+  ],
+  "success_signal": "A clean session on a blocked issue is denied its first source edit with the exact active gate as the reason, while a bare repository with no binding sees no interference at all.",
+  "reversibility": "Unregister the hooks from the plugin manifest; all new commands become inert conveniences and prior behavior returns exactly.",
+  "decision_owner": "Issue owner",
+  "risks": [
+    {
+      "risk": "Mechanical gating traps an agent mid-session on files it legitimately needs.",
+      "mitigation": "Deny only repository source paths, always allow the state directory, and fail open on any error or missing binding."
+    }
+  ],
+  "disposition": "proceed"
+}

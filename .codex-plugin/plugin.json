@@ -1,6 +1,6 @@
 {
   "name": "loopbreaker",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Shape, score, plan, implement, and review software against a local behavior contract with bounded review and explicit shipping decisions.",
   "author": {
     "name": "Rordi",
@@ -15,7 +15,7 @@
   "interface": {
     "displayName": "Loopbreaker",
     "shortDescription": "Bounded agent delivery from shaping through review",
-    "longDescription": "Five reusable delivery skills share one local SQLite and MCP behavior contract, adding explicit shaping, deterministic planning health, independent bounded planning review, attributable evidence, and shipping decisions.",
+    "longDescription": "Six reusable delivery skills share one local SQLite and MCP behavior contract, adding explicit shaping, deterministic planning health, independent bounded planning review, orchestrated multi-agent implementation, attributable evidence, and shipping decisions.",
     "developerName": "Rordi",
     "category": "Productivity",
     "capabilities": ["Interactive", "Read", "Write"],
@@ -24,6 +24,7 @@
       "Shape this idea into a bounded product bet",
       "Plan this feature as an executable behavior contract",
       "Review this shape and plan before implementation",
+      "Orchestrate this feature with isolated workers and independent review",
       "Review this change without starting a review loop"
     ],
     "brandColor": "#84D69A"

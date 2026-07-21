@@ -39,6 +39,13 @@ Recommend `spike` when the central technical or demand assumption is too uncerta
 to define an honest acceptance contract. Give the spike a timebox, one question,
 and a decision it will unlock. Do not disguise implementation as a spike.
 
+## State authority
+
+See [state authority](../shared/state-authority.md). This skill authors a proposed
+disposition; it does not persist planning or review state. After calling
+`shape_record`, report only the disposition actually persisted — never predict how
+a downstream `$review-planning` will resolve it.
+
 ## Output
 
 Return this packet:

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Orchestrate Delivery"
+  short_description: "Three-role delivery: orchestrator, isolated workers, independent reviewer"
+  default_prompt: "Use $orchestrate-delivery to run this feature with isolated implementation workers and an independent cross-vendor review."

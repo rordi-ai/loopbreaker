@@ -17,13 +17,16 @@ or rollback was never made explicit. Loopbreaker makes the distinct authorities
 explicit: shape, structural planning health, semantic planning approval,
 implementation review, and shipping readiness.
 
-It now packages the complete public workflow as five reusable agent skills:
+It now packages the complete public workflow as six reusable agent skills:
 
 - `shape-strategy` — frame appetite, reversibility, smallest slice, and success.
 - `plan-feature` — freeze enforced behaviors and reach healthy planning.
 - `review-planning` — independently approve or redirect shape and planning in at most three passes.
 - `implement-feature` — build only a planning-ready contract and record evidence.
 - `review-invariants` — enforce planning preflight, two-plus-one review, and ship authority.
+- `orchestrate-delivery` — run the whole pipeline as three separated roles: a root
+  orchestrator, per-work-unit workers in isolated worktrees, and an independent
+  cross-vendor CLI reviewer recording its own findings over MCP.
 
 ![Loopbreaker visual decision view](docs/loopbreaker.png)
 
@@ -69,7 +72,7 @@ it with `--db PATH` or `LOOPBREAKER_DB`.
 ## Install as a Codex plugin
 
 The repository is a complete plugin: [.codex-plugin/plugin.json](.codex-plugin/plugin.json)
-registers the five skills and [.mcp.json](.mcp.json) starts the bundled local MCP
+registers the six skills and [.mcp.json](.mcp.json) starts the bundled local MCP
 server. No TypeScript runtime is needed after the repository has been built.
 
 ```sh
@@ -86,8 +89,9 @@ otherwise the server uses `.loopbreaker/loopbreaker.db` under its working direct
 The same repository is also a Claude Code plugin:
 [.claude-plugin/plugin.json](.claude-plugin/plugin.json) starts the bundled MCP
 server (database at `.loopbreaker/loopbreaker.db` under the current project), and
-the five skills under [skills/](skills/) are auto-discovered as
-`/loopbreaker:<skill-name>`.
+the six skills under [skills/](skills/) are auto-discovered as
+`/loopbreaker:<skill-name>`. The `impl-worker` subagent used by
+`orchestrate-delivery` is auto-discovered from [agents/](agents/).
 
 ```sh
 pnpm install && pnpm build

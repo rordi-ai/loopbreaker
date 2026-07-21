@@ -137,6 +137,11 @@ export class LoopbreakerDb {
         smallest_fix TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS workspace (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        active_issue TEXT REFERENCES issues(id) ON DELETE SET NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_behaviors_issue ON behaviors(issue_id);
       CREATE INDEX IF NOT EXISTS idx_evidence_issue ON evidence(issue_id);
       CREATE INDEX IF NOT EXISTS idx_findings_issue ON findings(issue_id);
@@ -223,6 +228,25 @@ export class LoopbreakerDb {
       INSERT INTO shape_assessments (issue_id, profile_json) VALUES (?, ?)
       ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
     `).run(issueId, JSON.stringify(profile));
+  }
+
+  activeIssue(): string | null {
+    const row = this.raw.prepare("SELECT active_issue FROM workspace WHERE id = 1").get() as { active_issue: string | null } | undefined;
+    return row?.active_issue ?? null;
+  }
+
+  setActiveIssue(issueId: string): void {
+    this.raw.prepare(`
+      INSERT INTO workspace (id, active_issue) VALUES (1, ?)
+      ON CONFLICT(id) DO UPDATE SET active_issue = excluded.active_issue
+    `).run(issueId);
+  }
+
+  clearActiveIssue(): void {
+    this.raw.prepare(`
+      INSERT INTO workspace (id, active_issue) VALUES (1, NULL)
+      ON CONFLICT(id) DO UPDATE SET active_issue = NULL
+    `).run();
   }
 }
 
