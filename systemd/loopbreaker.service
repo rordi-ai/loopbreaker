@@ -1,0 +1,33 @@
+# Reference systemd --user unit. `scripts/loopbreaker-ctl.sh start` generates a copy of this
+# with absolute paths filled in at ~/.config/systemd/user/loopbreaker.service. Edit + use this
+# directly only if you prefer to manage it by hand:
+#
+#   cp systemd/loopbreaker.service ~/.config/systemd/user/
+#   (edit the @PLACEHOLDERS@ below)
+#   systemctl --user daemon-reload && systemctl --user enable --now loopbreaker
+
+[Unit]
+Description=Loopbreaker delivery visualizer
+After=default.target
+# Never give up restarting — a phone-only operator can't run 'systemctl reset-failed'.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=@PLUGIN_ROOT@
+ExecStart=@NODE@ @PLUGIN_ROOT@/dist/cli.js serve --port @PORT@
+Restart=on-failure
+RestartSec=5
+# Hardening: the server exposes delivery state (and DEMO-1 mutations), so deny privilege
+# escalation and give it a private /tmp. ProtectSystem is intentionally NOT set — the DB path
+# (LOOPBREAKER_DB) is env-driven and may live anywhere, so it can't be enumerated in a static
+# ReadWritePaths.
+NoNewPrivileges=yes
+PrivateTmp=yes
+Environment=HERDR_SOCKET_PATH=%h/.config/herdr/herdr.sock
+Environment=LOOPBREAKER_PORT=7331
+Environment=HERDR_PLUGIN_CONFIG_DIR=%h/.config/loopbreaker
+EnvironmentFile=-%h/.config/loopbreaker/.env
+
+[Install]
+WantedBy=default.target

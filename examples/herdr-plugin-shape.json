@@ -1,0 +1,21 @@
+{
+  "problem": "Loopbreaker's delivery state is only reachable from the machine running it — an operator or the agent herd can't glance at shape, planning, review, and shipping without shelling into the repo. Rordi's rich SPA won't exist here; the herd needs a first-class way to see loopbreaker's own live visualizer.",
+  "appetite": "One bounded slice: a Herdr plugin manifest plus a systemd-supervised launcher reusing the existing web/ visualizer, no Herdr-core changes.",
+  "smallest_slice": "A herdr-plugin.toml whose start action supervises `loopbreaker serve` against one configured database, surfaced to the herd over Tailscale, modeled on the Collie launcher.",
+  "non_goals": [
+    "Workspace-aware multi-database serving",
+    "Building a delivery view inside the Collie PWA",
+    "Any change to Herdr core or the Collie repo",
+    "A portfolio UI (waits on LB-23)"
+  ],
+  "success_signal": "`herdr plugin link` registers herdr.loopbreaker, its start action brings up the visualizer as a durable service reachable over the tailnet, and the substrate pane renders the active issue inside Herdr.",
+  "reversibility": "The uninstall action stops and disables the service and removes the systemd unit; the checkout and .env remain, and Herdr returns to exactly its prior state.",
+  "decision_owner": "ben@rordi.ai",
+  "risks": [
+    {
+      "risk": "A host-global service maps poorly onto loopbreaker's per-repo databases.",
+      "mitigation": "Serve one explicit LOOPBREAKER_DB now; track multi-DB as a follow-up that LB-23 pressures."
+    }
+  ],
+  "disposition": "proceed"
+}

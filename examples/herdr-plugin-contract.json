@@ -1,0 +1,89 @@
+{
+  "issue_id": "LB-20",
+  "title": "Ship loopbreaker as a first-class Herdr plugin",
+  "description": "Expose the delivery-gate visualizer to the agent herd as a Herdr first-class citizen. Repairs LB-20-PLN-001 by enforcing the two outcomes the shape's success signal promises (tailnet-reachable route and the in-Herdr substrate pane), and LB-20-PLN-002 by making the supervision and no-stray proofs exclude their failure modes.",
+  "behaviors": [
+    {
+      "id": "LB-20-B1",
+      "title": "Herdr recognizes loopbreaker as a linked plugin",
+      "trigger": "An operator runs `herdr plugin link` against the loopbreaker checkout",
+      "expected": "The plugin registers with id herdr.loopbreaker and its actions appear in the live plugin registry",
+      "verify": "Link the checkout and read back herdr.loopbreaker with its start/stop/url actions from `herdr plugin list`"
+    },
+    {
+      "id": "LB-20-B2",
+      "title": "The systemd unit owns the serving process across a Herdr restart",
+      "trigger": "The plugin's start action runs on a host with systemd --user, and Herdr is subsequently restarted",
+      "expected": "The visualizer answers on the configured port and the systemd --user unit is active and owns the process actually bound to that port, both before and after the Herdr restart",
+      "verify": "Invoke start, assert the unit is active and its MainPID owns the listening socket on the configured port, restart Herdr, then assert unit-active and the same MainPID-owns-listener relationship again"
+    },
+    {
+      "id": "LB-20-B3",
+      "title": "The service serves one configured database and creates no stray database",
+      "trigger": "The service starts with LOOPBREAKER_DB set in the plugin .env",
+      "expected": "The visualizer reads exactly that database, and no checkout-local .loopbreaker database is created by startup",
+      "verify": "Snapshot the checkout filesystem before start, start with a chosen LOOPBREAKER_DB, diff served issues against that database, and assert by before/after filesystem comparison that no checkout-local .loopbreaker path was created"
+    },
+    {
+      "id": "LB-20-B4",
+      "title": "The substrate pane renders inside a Herdr popup",
+      "trigger": "An operator invokes the substrate pane action",
+      "expected": "A Herdr popup pane shows the active issue's prime block, or the all-issues dashboard when no active issue is linked",
+      "verify": "Open the pane through the real Herdr pane surface with and without a linked active issue against a disposable database, and read back the expected readout from the pane in each case"
+    },
+    {
+      "id": "LB-20-B5",
+      "title": "The visualizer is reachable from the herd over the tailnet",
+      "trigger": "The start action completes on a host with Tailscale available",
+      "expected": "The exact tailnet URL the url action reports serves the visualizer, routing to the configured loopback port",
+      "verify": "Resolve the tailnet URL from the url action, fetch the visualizer and its /api/issues route through that URL from the tailnet, and assert the response matches the locally served instance"
+    }
+  ],
+  "planning": {
+    "outcome": "Loopbreaker is installable and supervisable as a Herdr plugin, serving its live visualizer to the herd over the tailnet and inside a Herdr pane.",
+    "appetite": "One plugin-manifest plus supervised-launcher slice reusing the existing web/ visualizer.",
+    "non_goals": [
+      "Workspace-aware multi-database serving",
+      "Building a delivery view inside the Collie PWA",
+      "Any change to Herdr core or the Collie repo",
+      "A portfolio UI (waits on LB-23)",
+      "Authentication on the served visualizer beyond tailnet membership"
+    ],
+    "work_units": [
+      {
+        "id": "plugin-manifest",
+        "title": "Author herdr-plugin.toml with actions, build, and a substrate pane",
+        "behavior_ids": ["LB-20-B1", "LB-20-B4"],
+        "done_when": "herdr plugin link registers the plugin and its actions and pane are invokable and render the expected readout"
+      },
+      {
+        "id": "supervised-launcher",
+        "title": "Author loopbreaker-ctl.sh + systemd unit modeled on Collie",
+        "behavior_ids": ["LB-20-B2", "LB-20-B3"],
+        "done_when": "The unit owns the serving process across a Herdr restart and startup creates no stray checkout-local database"
+      },
+      {
+        "id": "herd-reachability",
+        "title": "Publish the visualizer to the tailnet and clean the mapping up on uninstall",
+        "behavior_ids": ["LB-20-B5"],
+        "done_when": "The reported tailnet URL serves the visualizer and uninstall removes exactly that mapping"
+      }
+    ],
+    "proofs": [
+      { "behavior_id": "LB-20-B1", "tier": "wired", "method": "Run `herdr plugin link` and read back herdr.loopbreaker with its actions from the live registry." },
+      { "behavior_id": "LB-20-B2", "tier": "wired", "method": "Assert unit-active and MainPID-owns-listener before and after a Herdr restart, not merely that the port answers." },
+      { "behavior_id": "LB-20-B3", "tier": "wired", "method": "Before/after filesystem snapshot proving no stray .loopbreaker was created, plus a served-issues diff against the chosen database." },
+      { "behavior_id": "LB-20-B4", "tier": "wired", "method": "Open the pane through the real Herdr pane surface in both linked and unlinked states and read back the expected readout." },
+      { "behavior_id": "LB-20-B5", "tier": "live", "method": "Fetch the visualizer and /api/issues through the reported tailnet URL from the tailnet and compare against the local instance." }
+    ],
+    "production_wiring": "herdr-plugin.toml at repo root declaring build, actions, and the substrate pane. scripts/loopbreaker-ctl.sh writes ~/.config/systemd/user/loopbreaker.service with ExecStart=node dist/cli.js serve --port PORT and Environment=LOOPBREAKER_DB, then runs systemctl --user enable --now. Herd reachability uses `tailscale serve --bg PORT` for https:443 by default, or `tailscale serve --bg --http=PORT PORT` when LOOPBREAKER_SERVE_MODE=http (Headscale/.internal); the url action resolves the tailnet name from `tailscale status --json` Self.DNSName. Uninstall removes exactly this mapping via `tailscale serve --https=443 off` or `--http=PORT off`, never a blanket `tailscale serve reset`.",
+    "rollback": "The uninstall action stops and disables the service, removes the systemd --user unit, and removes only loopbreaker's own tailscale serve mapping, leaving unrelated mappings, the checkout, and the .env intact. Herdr returns to exactly its prior state.",
+    "migration": "No stored-data migration; the service reads an existing loopbreaker database and creates none.",
+    "decision_owner": "ben@rordi.ai",
+    "risks": [
+      { "risk": "Host-global service vs loopbreaker's per-repo databases.", "mitigation": "Serve one explicit LOOPBREAKER_DB, proven by LB-20-B3; multi-DB is a named non-goal pressured by LB-23." },
+      { "risk": "A blanket tailscale serve reset would wipe unrelated mappings such as Collie's.", "mitigation": "Uninstall targets only loopbreaker's own mapping, keyed off the same serve mode that created it." },
+      { "risk": "Publishing the visualizer to the tailnet widens its exposure beyond loopback.", "mitigation": "Exposure is bounded to tailnet members; LOOPBREAKER_SKIP_SERVE=1 keeps it loopback-only." }
+    ]
+  }
+}

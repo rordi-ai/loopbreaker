@@ -1,0 +1,65 @@
+{
+  "issue_id": "LB-24",
+  "title": "Surface domain invariants as queryable canon entities",
+  "description": "Make loopbreaker's baked-in domain rules queryable nodes that held gates cite. Repairs LB-24-PLN-001 by enforcing the inspector behavior the shape's smallest slice requires, LB-24-PLN-002 by proving every held-gate path rather than one, and LB-24-PLN-003 by naming the exact list/query surface and its wiring.",
+  "behaviors": [
+    {
+      "id": "LB-24-B1",
+      "title": "Every held-gate path cites a resolvable canon id",
+      "trigger": "Any of the four shipping hold branches in substrate() produces a held reason: shape gate (SH1), planning gate (SH2), planning_review gate (SH3), or verification gate (SH4)",
+      "expected": "Each held reason carries a canon id, and every cited id resolves to a seeded canon row",
+      "verify": "Drive a disposable database through all four held-gate branches in turn, assert a canon id is present on each held reason, and resolve every cited id against the canon listing surface"
+    },
+    {
+      "id": "LB-24-B2",
+      "title": "Canon is listable through the named CLI and MCP surface",
+      "trigger": "An operator runs `loopbreaker canon` or an agent calls the review_list_canon MCP tool",
+      "expected": "The seeded core invariants are returned with id, title, statement, and enforced flag",
+      "verify": "Invoke `loopbreaker canon` and the review_list_canon MCP tool against a disposable database and observe the seeded core invariant set in both outputs"
+    },
+    {
+      "id": "LB-24-B3",
+      "title": "The visualizer inspector shows the enforcing invariant",
+      "trigger": "The visualizer inspects a held gate node",
+      "expected": "The inspector renders the statement of the canon row cited by that held gate",
+      "verify": "Select a held gate node in the running visualizer against a disposable database and read the rendered canon statement back from the inspector panel"
+    }
+  ],
+  "planning": {
+    "outcome": "Loopbreaker's invariants are queryable nodes that every held gate cites and the visualizer can explain.",
+    "appetite": "One read-only canon slice; enforcement semantics stay in domain.ts.",
+    "non_goals": [
+      "The claim calculus: computed status from evaluators, justification edges, coherence axes (stay in Rordi)",
+      "Editing enforcement semantics from data - the rules remain in domain.ts and canon only describes them",
+      "Canon domains, tiers, and register axes",
+      "Citing canon from the DomainError throw paths (recordPass, recordPlanningReviewPass); this slice covers the four derived shipping hold branches only"
+    ],
+    "work_units": [
+      {
+        "id": "canon-store",
+        "title": "Add the canon table, seed the core invariants, and expose the list/query surface",
+        "behavior_ids": ["LB-24-B2"],
+        "done_when": "`loopbreaker canon` and review_list_canon both return the seeded core invariants from the canon table"
+      },
+      {
+        "id": "canon-citation",
+        "title": "Cite canon ids from every held-gate reason and render them in the inspector",
+        "behavior_ids": ["LB-24-B1", "LB-24-B3"],
+        "done_when": "All four shipping hold branches carry a resolvable canon id and the inspector renders the cited statement"
+      }
+    ],
+    "proofs": [
+      { "behavior_id": "LB-24-B1", "tier": "wired", "method": "Matrix over all four held-gate branches (SH1 shape, SH2 planning, SH3 planning_review, SH4 verification): assert a canon id on each held reason and resolve each cited id through the canon listing surface." },
+      { "behavior_id": "LB-24-B2", "tier": "wired", "method": "Invoke `loopbreaker canon` and the review_list_canon MCP tool against a disposable database and compare both against the seeded set." },
+      { "behavior_id": "LB-24-B3", "tier": "wired", "method": "Select a held gate node in the running visualizer and read the cited canon statement from the inspector panel." }
+    ],
+    "production_wiring": "New canon table in db.ts migrate() (id, title, statement, enforced), seeded at migrate() with the core invariants: behavior children enforced by default, an issue's behavior children freeze its acceptance contract, implementation requires shape proceed then healthy planning then independent planning-review approval in that order, review is capped at three passes with no pass four, review completion and shipping readiness are separate facts, and shipping requires every enforced behavior verified or explicitly waived. The list surface is a new `loopbreaker canon` CLI command in src/cli.ts emitting the standard TOON envelope, plus a review_list_canon MCP tool in src/mcp.ts returning the same rows; both read the canon table through a db.ts accessor. substrate() attaches canon_id to each of the four shipping hold branches in src/domain.ts (lines 228, 235, 247, 254). The inspector panel in web/src/App.tsx renders the cited statement for a selected held gate node.",
+    "rollback": "Canon is read-only and additive. Drop the citation field from the held reasons and the inspector render; every gate evaluates exactly as before with no data loss and no behavior change.",
+    "migration": "Additive table seeded idempotently at migrate(); no existing row is read or changed.",
+    "decision_owner": "ben@rordi.ai",
+    "risks": [
+      { "risk": "Canon statements drift from the code rules they describe.", "mitigation": "Seed from a single source and let the LB-24-B1 matrix fail if any held gate cites an id absent from the seeded listing." },
+      { "risk": "Adding a citation field changes the held reason string consumed by the PreToolUse hook at hooks.ts:107.", "mitigation": "Carry canon_id as a distinct field rather than embedding it in the reason prose, so the existing reason text and its consumers are unchanged." }
+    ]
+  }
+}

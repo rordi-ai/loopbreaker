@@ -1,0 +1,26 @@
+{
+  "problem": "Loopbreaker records what changed in the substrate but not who or what caused it, so a progression cannot be attributed to the ingress that produced it. Writes reach ten tables through twelve distinct write sites - eight direct INSERTs in src/domain.ts, two profile setters in src/db.ts, and two behaviour-status UPDATEs - and none of them carries a source today.",
+  "appetite": "One instance-carried provenance slice covering every write site on the mutation path, with exact column semantics.",
+  "smallest_slice": "Carry a provenance triple on the LoopbreakerDb instance set at each ingress, stamp it at all twelve write sites across the ten written tables, define exact trigger_type, triggered_by, and trigger_data values, close the one raw-write bypass, and expose the triple in the substrate readout.",
+  "non_goals": [
+    "A full append-only events log spanning session and workflow planes (stays in Rordi)",
+    "Retroactive backfill of a causing ingress that is unknowable for existing rows",
+    "Per-MCP-tool granularity, which the shared interleaving handler makes unsafe as ambient per-call state",
+    "Provenance on the idempotent migrate() DDL, which writes no rows",
+    "Introducing a mutating hook path; hooks are read-only and stay that way in this slice"
+  ],
+  "success_signal": "Every one of the twelve write sites - shape_assessments, planning_profiles, issues, behaviors on insert and on both status progressions, planning_findings, planning_review_passes, review_passes, findings, evidence, and waivers - persists a non-null trigger_type and triggered_by with defined values, no mutation path bypasses the stamp, and the substrate readout exposes the triple for every record type that carries it.",
+  "reversibility": "The columns are additive and nullable. Stop setting provenance at the four ingresses and drop the readout; every gate behaves exactly as before with no data loss and no schema reversal.",
+  "decision_owner": "ben@rordi.ai",
+  "risks": [
+    {
+      "risk": "Instance-carried provenance identifies the ingress but not the individual MCP tool call.",
+      "mitigation": "Ingress granularity is the explicit scope and per-tool granularity is a named non-goal, because mcp.ts opens one shared db handle closed over by interleaving async handlers."
+    },
+    {
+      "risk": "Write sites outside the direct INSERTs could be missed, leaving silent gaps.",
+      "mitigation": "The slice enumerates all twelve sites explicitly, including the two db.ts profile setters and the two behaviour-status UPDATEs, and an enforced behaviour asserts no bypass remains."
+    }
+  ],
+  "disposition": "proceed"
+}

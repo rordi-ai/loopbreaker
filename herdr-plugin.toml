@@ -1,0 +1,77 @@
+id = "herdr.loopbreaker"
+name = "Loopbreaker"
+version = "0.5.0"
+min_herdr_version = "0.7.0"
+description = "Live delivery-gate visualizer for the herd — shape, planning, review, and shipping state served over Tailscale"
+platforms = ["linux", "macos"]
+
+# Loopbreaker is a first-class Herdr citizen the same way Collie is: a THIN LAUNCHER.
+# The web visualizer (`loopbreaker serve`, src/server.ts, :7331) runs as a systemd --user
+# service so it outlives Herdr restarts, and the actions below shell out to
+# scripts/loopbreaker-ctl.sh, which gets HERDR_SOCKET_PATH / HERDR_PLUGIN_CONFIG_DIR injected.
+#
+# Loopbreaker's DB is per-repo (<repo>/.loopbreaker/loopbreaker.db) but this service is
+# host-global, so it serves ONE configured database (LOOPBREAKER_DB in the plugin .env).
+# Workspace-aware multi-DB serving is a tracked follow-up (docs/backlog/rordi-parity.md).
+
+# Build at install time (GitHub install only; `plugin link` builds lazily on first `start`
+# via loopbreaker-ctl.sh's ensure_build). Delegating to the ctl script keeps one build
+# definition — pnpm install --frozen-lockfile && pnpm build — shared with `update`.
+[[build]]
+command = ["bash", "scripts/loopbreaker-ctl.sh", "build"]
+platforms = ["linux", "macos"]
+
+[[actions]]
+id = "start"
+title = "Start delivery visualizer"
+contexts = ["workspace"]
+command = ["bash", "scripts/loopbreaker-ctl.sh", "start"]
+
+[[actions]]
+id = "stop"
+title = "Stop delivery visualizer"
+contexts = ["workspace"]
+command = ["bash", "scripts/loopbreaker-ctl.sh", "stop"]
+
+[[actions]]
+id = "restart"
+title = "Restart delivery visualizer"
+contexts = ["workspace"]
+command = ["bash", "scripts/loopbreaker-ctl.sh", "restart"]
+
+# Full teardown: stop + disable the service, remove the systemd --user unit, reset the
+# tailscale serve mapping. Leaves the .env and checkout so `start` can bring it back.
+[[actions]]
+id = "uninstall"
+title = "Uninstall visualizer (remove service)"
+contexts = ["workspace"]
+command = ["bash", "scripts/loopbreaker-ctl.sh", "uninstall"]
+
+# Link-mode plugins ARE their on-disk git checkout, so this pulls + rebuilds + restarts.
+[[actions]]
+id = "update"
+title = "Update plugin"
+contexts = ["workspace"]
+command = ["bash", "scripts/loopbreaker-ctl.sh", "update"]
+
+[[actions]]
+id = "url"
+title = "Show visualizer URL"
+contexts = ["workspace"]
+command = ["bash", "scripts/loopbreaker-ctl.sh", "url"]
+
+[[actions]]
+id = "status"
+title = "Visualizer status"
+contexts = ["workspace"]
+command = ["bash", "scripts/loopbreaker-ctl.sh", "status"]
+
+# Read-only substrate readout for the active issue, in a Herdr popup pane. Mirrors Stable's
+# picker pattern: a short-lived process rendering `loopbreaker substrate` inside a pane.
+[[panes]]
+id = "substrate"
+title = "Delivery substrate"
+placement = "popup"
+width = "80%"
+height = 24
+command = ["bash", "scripts/loopbreaker-ctl.sh", "substrate"]
