@@ -101,6 +101,13 @@ Call `review_import_contract` with:
 }
 ```
 
+## State authority
+
+See [state authority](../shared/state-authority.md). Report `planning_health` and
+`review_substrate` results exactly as persisted — the score, the five dimensions,
+and `ready: true`/`false` — never as a forecast of what review will decide. Freezing
+and importing the contract does not itself admit implementation.
+
 ## Output
 
 Lead with the frozen contract and include:

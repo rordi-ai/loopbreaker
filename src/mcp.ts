@@ -17,6 +17,7 @@ import {
   upsertFinding,
   verifyBehavior,
 } from "./domain.js";
+import { primePayload } from "./prime.js";
 import type { PlanningHealth } from "./types.js";
 import { failure, success } from "./toon.js";
 
@@ -207,6 +208,18 @@ export async function runMcp(dbPath?: string): Promise<void> {
           implementation: { admitted: state.shape.ready && state.planning.ready && state.planning_review.approved }, shipping: state.shipping,
         }, db.path);
       } catch (error) { return toolError(error); }
+    },
+  );
+
+  server.registerTool(
+    "delivery_prime",
+    {
+      description: "Compose the single deterministic prime block for the active or named issue: the ordered authority chain, the single next allowed action, open blocking findings, and unverified enforced behaviors. Composed only from the database, with no advice prose.",
+      inputSchema: { issue_id: z.string().min(1).optional() },
+    },
+    async ({ issue_id }) => {
+      try { return content(primePayload(db, issue_id), db.path); }
+      catch (error) { return toolError(error); }
     },
   );
 

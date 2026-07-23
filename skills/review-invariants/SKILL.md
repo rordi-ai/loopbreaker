@@ -12,7 +12,8 @@ gate.
 
 ## Non-negotiable state authority
 
-Every response MUST start with five separate lines:
+See [state authority](../shared/state-authority.md) for the full discipline; it
+applies here without exception. This skill's header emits five separate lines:
 
 ```text
 Shape: <exact persisted disposition and readiness>
@@ -21,13 +22,6 @@ Planning: <exact persisted score and readiness>
 Review: <current or proposed review result>
 Shipping: <exact persisted disposition> [state unchanged when not persisted]
 ```
-
-A review verdict never changes behavior or shipping state. Only successful MCP
-evidence, behavior-verification, or waiver mutations can change the persisted ship
-disposition. Without those successful calls, copy the preflight behavior statuses and
-shipping disposition exactly—even when the implementation and proof deserve PASS.
-Calling a pending behavior `verified`, omitting the Shipping line, or saying shipping
-“may/should move” is an invalid review response.
 
 Read [references/decision-rules.md](references/decision-rules.md) completely before
 reviewing.
@@ -81,9 +75,6 @@ Use state words literally:
 - Say `proof observed` when evidence passed but was not persisted.
 - Say `verified` only when `review_verify_behavior` succeeded or the loaded
   substrate already says `verified`.
-- Copy the latest `review_ship_status` disposition verbatim. If no mutation call
-  succeeded, copy the disposition from the preflight substrate verbatim.
-- Never say shipping “may move,” “should move,” or is implied by the verdict.
 
 ## Output
 

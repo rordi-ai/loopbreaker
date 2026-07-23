@@ -1,0 +1,108 @@
+{
+  "issue_id": "LB-18",
+  "title": "Enforce delivery admission mechanically via lifecycle hooks and a composed prime block",
+  "description": "Turn the ordered delivery authority from skill prose into harness-enforced state: one active-issue binding, one database-composed prime block emitted identically across surfaces, a session-start context hook, and a pre-tool-use admission gate that denies source edits before implementation is admitted. Doctrine stays in markdown skills; only state and its litany become computed. Stop-hook blocking is explicitly out of scope.",
+  "behaviors": [
+    {
+      "id": "LB-18-B1",
+      "title": "Bind one active issue per repository",
+      "trigger": "A builder runs loopbreaker link ISSUE, link --show, or link --clear",
+      "expected": "The active issue persists durably under the repository's loopbreaker state, --show reports it exactly, --clear removes it, and resolution without a binding reports an explicit none rather than guessing",
+      "verify": "Round-trip link, show, clear against a real database and observe exact persisted values"
+    },
+    {
+      "id": "LB-18-B2",
+      "title": "Compose the prime block deterministically from the database",
+      "trigger": "A builder runs loopbreaker prime or an agent calls the delivery_prime MCP tool for the active or named issue",
+      "expected": "Both surfaces return one identical compact block: the ordered authority chain with exact persisted dispositions, the single next allowed action, open blocking findings, and unverified enforced behaviors, composed only from the database with no advice prose",
+      "verify": "Run the built CLI and a real MCP handshake against one admitted and one blocked fixture and observe identical, stable blocks"
+    },
+    {
+      "id": "LB-18-B3",
+      "title": "Inject the prime block at session start",
+      "trigger": "The host dispatches a session-start hook event to loopbreaker hook session-start with event JSON on stdin",
+      "expected": "With an active issue the command emits hookSpecificOutput.additionalContext containing the prime block and exits 0; without a database, active issue, or parseable stdin it emits no context and still exits 0",
+      "verify": "Pipe real hook event fixtures to the built CLI inside a linked repository and inside a bare directory and inspect exact JSON output and exit codes"
+    },
+    {
+      "id": "LB-18-B4",
+      "title": "Deny source edits before implementation is admitted",
+      "trigger": "The host dispatches a pre-tool-use hook event whose tool_name is exactly Edit, Write, MultiEdit, or NotebookEdit while the active issue is not implementation-admitted",
+      "expected": "The gate collects every target path present in tool_input.file_path and tool_input.notebook_path, resolves each to an absolute normalized path against the event cwd, and denies with the exact active gate as reason when any valid target is inside the repository root and outside the .loopbreaker state directory; an event carrying multiple targets is denied when any one deniable target exists; every other case allows: admitted issues, no linked issue, tool names not in the list including Bash which is explicitly out of scope, events whose targets are all outside the repository root or inside .loopbreaker, missing or unparseable path fields, and any internal error, always with exit 0",
+      "verify": "Pipe fixture events through the built CLI covering each listed tool name, an unlisted tool, in-repo and out-of-repo targets, a .loopbreaker target, a multi-target event mixing one allowed and one deniable path, a missing path field, and a corrupt event, against one blocked and one admitted issue, and observe the exact decision, reason, and exit code for every case"
+    },
+    {
+      "id": "LB-18-B5",
+      "title": "Ship the hooks through the Claude plugin manifest",
+      "trigger": "A repository installs the plugin or this repository runs verification",
+      "expected": "The Claude plugin manifest registers the session-start and pre-tool-use hooks against the packaged CLI, and repository verification fails if the registration, commands, or hook entry point drift",
+      "verify": "Run the plugin verification script and the host plugin validator and observe both passing with hooks registered"
+    },
+    {
+      "id": "LB-18-B6",
+      "title": "Deduplicate the state litany out of the skills",
+      "trigger": "A skill needs the mandatory state-header and state-authority rules",
+      "expected": "The canonical litany lives in exactly one referenced place fed by the composed prime block, every one of the six skills contains an explicit reference to that canonical source instead of restating it, and repository verification fails when the canonical definition count differs from one or when any skill lacks the reference",
+      "verify": "Run the repository verification check that asserts exactly one canonical litany definition and asserts the explicit reference is present in all six SKILL.md files, and observe it fail on a fixture with a missing reference or a duplicated definition"
+    }
+  ],
+  "planning": {
+    "outcome": "An agent session cannot begin implementation before persisted admission, and every session starts knowing the exact gate state without any skill restating it.",
+    "appetite": "One focused slice across engine, CLI, MCP, plugin manifest, verification, and skill text; no server, no modes, no Stop blocking.",
+    "non_goals": [
+      "A blocking Stop hook or any exit gate",
+      "Doctrine or skill prose stored in the database",
+      "Codex-side hook wiring in this slice",
+      "Session registries or multi-session state",
+      "Gating Bash or any tool other than the four named file-mutation tools"
+    ],
+    "work_units": [
+      {
+        "id": "active-issue-and-prime",
+        "title": "Persist the active-issue binding and compose the prime block",
+        "behavior_ids": ["LB-18-B1", "LB-18-B2"],
+        "done_when": "Link round-trips on a real database and CLI plus MCP return one identical deterministic prime block."
+      },
+      {
+        "id": "lifecycle-hooks",
+        "title": "Implement the session-start and pre-tool-use hook commands",
+        "behavior_ids": ["LB-18-B3", "LB-18-B4"],
+        "done_when": "Both hook commands satisfy their fixtures, including every named mutating tool, the unlisted-tool allow, in-repo and out-of-repo path classification, the .loopbreaker exception, missing path fields, and corrupt-event fail-open."
+      },
+      {
+        "id": "plugin-and-verification",
+        "title": "Register hooks in the Claude manifest and extend verification",
+        "behavior_ids": ["LB-18-B5"],
+        "done_when": "verify-plugin and the host validator both pass with hook registration asserted."
+      },
+      {
+        "id": "skill-dedup",
+        "title": "Move the state litany to one canonical source and slim the skills",
+        "behavior_ids": ["LB-18-B6"],
+        "done_when": "The litany exists exactly once, all six SKILL.md files carry the explicit reference, and verification fails on a missing reference or an extra definition."
+      }
+    ],
+    "proofs": [
+      { "behavior_id": "LB-18-B1", "tier": "wired", "method": "Round-trip link, show, clear through the built CLI on a real database." },
+      { "behavior_id": "LB-18-B2", "tier": "live", "method": "Compare CLI output and a real MCP delivery_prime call against admitted and blocked fixtures." },
+      { "behavior_id": "LB-18-B3", "tier": "wired", "method": "Pipe recorded hook event JSON to the built CLI in linked and bare directories." },
+      { "behavior_id": "LB-18-B4", "tier": "wired", "method": "Pipe the full fixture matrix (each named tool, unlisted tool, in-repo, out-of-repo, .loopbreaker, missing path, corrupt event) against blocked and admitted issues through the built CLI." },
+      { "behavior_id": "LB-18-B5", "tier": "live", "method": "Run verify-plugin plus the host plugin validator on the repository." },
+      { "behavior_id": "LB-18-B6", "tier": "wired", "method": "Run the verification check asserting one canonical litany definition and a reference in all six SKILL.md files, and observe it fail on a violating fixture." }
+    ],
+    "production_wiring": "The SQLite-backed engine gains the active-issue store and prime composer; the CLI exposes link, prime, and hook commands; the bundled MCP server exposes delivery_prime; the Claude plugin manifest wires both hook events to the packaged CLI; verify-plugin asserts wiring and litany uniqueness.",
+    "rollback": "Remove the hook registration from the plugin manifest; link, prime, and the MCP tool remain as inert conveniences and no gate blocks any edit.",
+    "migration": "Create the workspace state storage idempotently; repositories without a binding behave exactly as before with hooks failing open.",
+    "decision_owner": "Issue owner",
+    "risks": [
+      {
+        "risk": "The pre-tool-use gate over-blocks and traps sessions on non-source files.",
+        "mitigation": "Deny only repository source paths, always allow the state directory, fail open on errors, and cover allow cases in fixtures."
+      },
+      {
+        "risk": "Prime block drifts from skill expectations after the dedup pass.",
+        "mitigation": "One canonical litany source enforced by verification; skills reference it rather than copy it."
+      }
+    ]
+  }
+}

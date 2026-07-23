@@ -51,6 +51,13 @@ When repairing an admitted finding:
 - If two repairs have failed, stop implementation expansion and hand the current
   state to the review decision packet.
 
+## State authority
+
+See [state authority](../shared/state-authority.md). Preflight and `review_ship_status`
+report exact persisted state; passing local tests or a converged repair does not
+itself change admission, review, or shipping disposition. Report only what those
+calls returned.
+
 ## Output
 
 Return changed paths, behavior-to-change mapping, verification performed, evidence

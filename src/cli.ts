@@ -2,15 +2,18 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { DomainError, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertPlanningFinding, verifyBehavior, createWaiver, importContract } from "./domain.js";
 import { openDb, type LoopbreakerDb } from "./db.js";
+import { dispatchHook } from "./hooks.js";
+import { primePayload } from "./prime.js";
 import type { PlanningHealth, PlanningProfile, ShapeProfile } from "./types.js";
 import { runMcp } from "./mcp.js";
 import { DEMO_ISSUE, seedDemo } from "./seed.js";
 import { startServer } from "./server.js";
 import { failure, success } from "./toon.js";
 
-type Flags = Record<string, string | boolean>;
+export type Flags = Record<string, string | boolean>;
 
 const HELP = `loopbreaker — local review graph with bounded passes and explicit ship decisions
 
@@ -26,12 +29,18 @@ Usage:
   loopbreaker plan-pass ISSUE --pass N --verdict V --summary TEXT
   loopbreaker plan-finding ISSUE --id ID --stage S --severity P --status S --title TEXT
   loopbreaker substrate ISSUE [--db PATH]      Show the full review substrate
+  loopbreaker link ISSUE [--db PATH]           Bind the active issue for this repository
+  loopbreaker link --show [--db PATH]          Show the currently linked active issue
+  loopbreaker link --clear [--db PATH]         Clear the active issue binding
+  loopbreaker prime [ISSUE] [--db PATH]        Compose the deterministic prime block
   loopbreaker pass ISSUE --pass N --verdict V --summary TEXT
   loopbreaker evidence ISSUE --behavior ID --tier T --verdict V --summary TEXT [--source URI]
   loopbreaker verify BEHAVIOR --evidence ID
   loopbreaker waive ISSUE --behavior ID --rationale TEXT --approved-by NAME
   loopbreaker serve [--db PATH] [--port 7331]  Start the local visual decision view
   loopbreaker mcp [--db PATH]                  Start the local MCP server over stdio
+  loopbreaker hook session-start [--db PATH]   Emit the prime block as SessionStart hook context
+  loopbreaker hook pre-tool-use [--db PATH]    Allow/deny a PreToolUse edit against admission
   loopbreaker help [COMMAND]
 
 Environment:
@@ -52,12 +61,15 @@ const COMMAND_HELP: Record<string, string> = {
   "plan-pass": "loopbreaker plan-pass ISSUE --pass 1|2|3 --verdict approved|changes_required|rescope|return_to_shaping --summary TEXT [--db PATH]",
   "plan-finding": "loopbreaker plan-finding ISSUE --id ID --stage shape|planning --severity P0|P1|P2|P3 --status open|repaired|accepted_debt --title TEXT [--reachability TEXT --impact TEXT --smallest-fix TEXT]",
   substrate: "loopbreaker substrate ISSUE [--db PATH]\n\nReturn behaviors, evidence, findings, passes, waivers, and derived ship state.",
+  link: "loopbreaker link ISSUE [--db PATH]\nloopbreaker link --show [--db PATH]\nloopbreaker link --clear [--db PATH]\n\nBind, show, or clear the one active issue persisted for this repository's loopbreaker state.",
+  prime: "loopbreaker prime [ISSUE] [--db PATH]\n\nCompose the single deterministic prime block for ISSUE, or the linked active issue when ISSUE is omitted: the ordered authority chain, the single next allowed action, open blocking findings, and unverified enforced behaviors. Returns both the structured block and its rendered text.",
   pass: "loopbreaker pass ISSUE --pass 1|2|3 --verdict pass|fail --summary TEXT [--db PATH]\n\nRecord only the next pass. Pass 4 is rejected.",
   evidence: "loopbreaker evidence ISSUE [--behavior ID] --tier unit|wired|live --verdict pass|fail --summary TEXT [--source URI] [--db PATH]",
   verify: "loopbreaker verify BEHAVIOR --evidence ID [--db PATH]\n\nVerify a behavior with passing evidence attached to that behavior.",
   waive: "loopbreaker waive ISSUE --behavior ID --rationale TEXT --approved-by NAME [--db PATH]\n\nCreate durable named debt for one enforced behavior.",
   serve: "loopbreaker serve [--db PATH] [--port 7331]\n\nServe the visual review graph on 127.0.0.1.",
   mcp: "loopbreaker mcp [--db PATH]\n\nRun the MCP server over stdio for a local client process.",
+  hook: "loopbreaker hook session-start [--db PATH]\nloopbreaker hook pre-tool-use [--db PATH]\n\nRead one hook event JSON object from stdin and write the host's expected hookSpecificOutput to stdout. Always exits 0; unknown or unparseable input fails open with no output (session-start) or allow (pre-tool-use).",
 };
 
 function parse(argv: string[]): { positional: string[]; flags: Flags } {
@@ -226,6 +238,69 @@ function output(data: unknown, db: LoopbreakerDb, next?: string[]): void {
   process.stdout.write(`${success(data, { db: db.path, ...(next ? { next } : {}) })}\n`);
 }
 
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) return "";
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Buffer));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/**
+ * Pure, synchronous, in-process dispatch for `loopbreaker hook <name>`.
+ * Thin delegator to hooks.ts's `dispatchHook`, the single source of truth
+ * shared with the bundled plugin hook entry point (src/plugin-hook.ts) --
+ * kept here (rather than callers using dispatchHook directly) only so tests
+ * and callers have one stable name for "the CLI's in-process hook dispatch."
+ * Exported so tests can exercise the full session-start/pre-tool-use wiring
+ * without spawning a child process.
+ */
+export function runHookCommand(name: string, stdin: string, db: LoopbreakerDb): string {
+  return dispatchHook(db, name, stdin);
+}
+
+/**
+ * Pure, synchronous, in-process dispatch for `loopbreaker link`: `--clear`
+ * wins over `--show`, which wins over binding the positional ISSUE. Exported
+ * so tests can exercise the exact CLI dispatch logic -- flag priority,
+ * existence validation, and the persisted binding it returns -- without
+ * spawning a child process.
+ */
+export function runLinkCommand(db: LoopbreakerDb, positional: string[], flags: Flags): { active_issue: string | null } {
+  if (flags.clear) {
+    db.clearActiveIssue();
+    return { active_issue: null };
+  }
+  if (flags.show) {
+    return { active_issue: db.activeIssue() };
+  }
+  const issueId = positional[1];
+  if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
+  db.setActiveIssue(issueId);
+  return { active_issue: issueId };
+}
+
+/**
+ * Thin IO wrapper around runHookCommand for a real `loopbreaker hook <name>`
+ * process invocation: read real stdin, open the db, dispatch, write the
+ * result, always exit 0. Hooks never go through the DomainError -> exit-1
+ * path.
+ */
+async function dispatchHookCommand(name: string | undefined, dbPath: string | undefined): Promise<void> {
+  let db: LoopbreakerDb | undefined;
+  try {
+    const raw = await readStdin();
+    if (name === undefined) return;
+    db = openDb(dbPath);
+    const result = runHookCommand(name, raw, db);
+    if (result) process.stdout.write(`${result}\n`);
+  } catch {
+    // Fail open: no output, exit 0.
+  } finally {
+    db?.close();
+  }
+}
+
 async function main(): Promise<void> {
   const { positional, flags } = parse(process.argv.slice(2));
   const command = positional[0];
@@ -238,6 +313,10 @@ async function main(): Promise<void> {
   const dbPath = typeof flags.db === "string" ? flags.db : undefined;
   if (command === "mcp") {
     await runMcp(dbPath);
+    return;
+  }
+  if (command === "hook") {
+    await dispatchHookCommand(positional[1], dbPath);
     return;
   }
   const db = openDb(dbPath);
@@ -360,6 +439,16 @@ async function main(): Promise<void> {
       output(substrate(db, issueId), db);
       return;
     }
+    if (command === "link") {
+      const bound = runLinkCommand(db, positional, flags);
+      const boundNewIssue = !flags.clear && !flags.show;
+      output(bound, db, boundNewIssue ? ["loopbreaker prime"] : undefined);
+      return;
+    }
+    if (command === "prime") {
+      output(primePayload(db, positional[1]), db);
+      return;
+    }
     if (command === "pass") {
       const issueId = positional[1];
       if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
@@ -417,8 +506,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  const known = error instanceof DomainError;
-  process.stdout.write(`${failure(known ? error.code : "internal_error", error instanceof Error ? error.message : String(error), known ? error.hint : undefined)}\n`);
-  process.exitCode = known && ["missing_flag", "missing_issue", "missing_behavior", "missing_file", "invalid_value", "unknown_command", "invalid_port", "invalid_contract_file", "invalid_contract", "invalid_plan_file", "invalid_plan", "invalid_shape_file", "invalid_shape"].includes(error.code) ? 2 : 1;
-});
+// Only run as a script (`node dist/cli.js`, `tsx src/cli.ts`, the `loopbreaker` bin), never as a
+// side effect of importing this module -- e.g. from tests that call runHookCommand directly.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    const known = error instanceof DomainError;
+    process.stdout.write(`${failure(known ? error.code : "internal_error", error instanceof Error ? error.message : String(error), known ? error.hint : undefined)}\n`);
+    process.exitCode = known && ["missing_flag", "missing_issue", "missing_behavior", "missing_file", "invalid_value", "unknown_command", "invalid_port", "invalid_contract_file", "invalid_contract", "invalid_plan_file", "invalid_plan", "invalid_shape_file", "invalid_shape", "no_active_issue"].includes(error.code) ? 2 : 1;
+  });
+}

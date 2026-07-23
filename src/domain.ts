@@ -77,9 +77,9 @@ export function shapeState(db: LoopbreakerDb, issueId: string): ShapeState {
 export function recordShape(db: LoopbreakerDb, issueId: string, profile: ShapeProfile): ShapeState {
   if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
   const current = db.shapeProfile(issueId);
-  if (db.planningReviewPasses(issueId).length > 0 && current !== null) {
+  if (planningReviewState(db, issueId).approved && current !== null) {
     if (isDeepStrictEqual(current, profile)) return shapeState(db, issueId);
-    throw new DomainError("shape_frozen", `${issueId} already has planning-review passes; its shape cannot change silently.`, "Create a new issue or record an explicit re-scope decision.");
+    throw new DomainError("shape_frozen", `${issueId} has an approved planning review; its shape cannot change silently.`, "Create a new issue or record an explicit re-scope decision.");
   }
   db.setShapeProfile(issueId, profile);
   return shapeState(db, issueId);
@@ -192,9 +192,9 @@ export function planningHealth(db: LoopbreakerDb, issueId: string): PlanningHeal
 export function recordPlanning(db: LoopbreakerDb, issueId: string, profile: PlanningProfile): PlanningHealth {
   if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
   const current = db.planningProfile(issueId);
-  if ((db.reviewPasses(issueId).length > 0 || db.planningReviewPasses(issueId).length > 0) && current !== null) {
+  if ((db.reviewPasses(issueId).length > 0 || planningReviewState(db, issueId).approved) && current !== null) {
     if (isDeepStrictEqual(current, profile)) return planningHealth(db, issueId);
-    throw new DomainError("plan_frozen", `${issueId} already has review passes; its planning profile cannot change silently.`, "Create a new issue or explicitly re-scope before another review.");
+    throw new DomainError("plan_frozen", `${issueId} has an approved planning review or code review passes; its planning profile cannot change silently.`, "Create a new issue or explicitly re-scope before another review.");
   }
   db.setPlanningProfile(issueId, profile);
   return planningHealth(db, issueId);
@@ -347,7 +347,7 @@ export function importContract(
 
   return db.transaction(() => {
     const existing = db.issue(input.issueId);
-    if (existing && (db.reviewPasses(input.issueId).length > 0 || db.planningReviewPasses(input.issueId).length > 0)) {
+    if (existing && (db.reviewPasses(input.issueId).length > 0 || planningReviewState(db, input.issueId).approved)) {
       const current = db.behaviors(input.issueId);
       const unchanged = current.length === input.behaviors.length && current.every((behavior, index) => {
         const incoming = input.behaviors[index];
@@ -362,7 +362,7 @@ export function importContract(
       if (!unchanged) {
         throw new DomainError(
           "contract_frozen",
-          `${input.issueId} already has review passes; its behavior acceptance surface cannot be changed silently.`,
+          `${input.issueId} has an approved planning review or code review passes; its behavior acceptance surface cannot be changed silently.`,
           "Create a new issue or explicitly re-scope before starting another review.",
         );
       }
@@ -373,7 +373,7 @@ export function importContract(
       ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description
     `).run(input.issueId, input.title, input.description ?? "");
 
-    if (!existing || (db.reviewPasses(input.issueId).length === 0 && db.planningReviewPasses(input.issueId).length === 0)) {
+    if (!existing || (db.reviewPasses(input.issueId).length === 0 && !planningReviewState(db, input.issueId).approved)) {
       db.raw.prepare("DELETE FROM behaviors WHERE issue_id = ?").run(input.issueId);
       const statement = db.raw.prepare(`
         INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal)
@@ -394,8 +394,8 @@ export function importContract(
     }
     if (input.planning) {
       const currentPlan = db.planningProfile(input.issueId);
-      if ((db.reviewPasses(input.issueId).length > 0 || db.planningReviewPasses(input.issueId).length > 0) && currentPlan !== null && !isDeepStrictEqual(currentPlan, input.planning)) {
-        throw new DomainError("plan_frozen", `${input.issueId} already has review passes; its planning profile cannot change silently.`);
+      if ((db.reviewPasses(input.issueId).length > 0 || planningReviewState(db, input.issueId).approved) && currentPlan !== null && !isDeepStrictEqual(currentPlan, input.planning)) {
+        throw new DomainError("plan_frozen", `${input.issueId} has an approved planning review or code review passes; its planning profile cannot change silently.`);
       }
       db.setPlanningProfile(input.issueId, input.planning);
     }

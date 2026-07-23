@@ -1,7 +1,7 @@
 {
   "name": "loopbreaker",
   "displayName": "Loopbreaker",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Shape, score, plan, implement, and review software against a local behavior contract with bounded review and explicit shipping decisions.",
   "author": {
     "name": "Rordi",
@@ -19,5 +19,28 @@
         "LOOPBREAKER_DB": "${CLAUDE_PROJECT_DIR}/.loopbreaker/loopbreaker.db"
       }
     }
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "LOOPBREAKER_DB=\"${CLAUDE_PROJECT_DIR}/.loopbreaker/loopbreaker.db\" node \"${CLAUDE_PLUGIN_ROOT}/mcp/hook.bundle.mjs\" session-start"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "LOOPBREAKER_DB=\"${CLAUDE_PROJECT_DIR}/.loopbreaker/loopbreaker.db\" node \"${CLAUDE_PLUGIN_ROOT}/mcp/hook.bundle.mjs\" pre-tool-use"
+          }
+        ]
+      }
+    ]
   }
 }
