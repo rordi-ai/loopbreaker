@@ -21384,9 +21384,9 @@ function shapeState(db, issueId) {
 function recordShape(db, issueId, profile) {
   if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
   const current = db.shapeProfile(issueId);
-  if (db.planningReviewPasses(issueId).length > 0 && current !== null) {
+  if (planningReviewState(db, issueId).approved && current !== null) {
     if (isDeepStrictEqual(current, profile)) return shapeState(db, issueId);
-    throw new DomainError("shape_frozen", `${issueId} already has planning-review passes; its shape cannot change silently.`, "Create a new issue or record an explicit re-scope decision.");
+    throw new DomainError("shape_frozen", `${issueId} has an approved planning review; its shape cannot change silently.`, "Create a new issue or record an explicit re-scope decision.");
   }
   db.setShapeProfile(issueId, profile);
   return shapeState(db, issueId);
