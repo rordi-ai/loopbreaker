@@ -1,0 +1,134 @@
+{
+  "issue_id": "LB-25",
+  "title": "Gate shape on a field-isomorphic, founder-issued discovery record",
+  "description": "First slice of the discovery-gate campaign, re-scoped after independent review. Repairs LB-25-PLN-TRACE-VALIDITY by making the gate value-binding and provenance-validated (an agent cannot self-assert as founder), and LB-25-PLN-CUTOVER-POLICY by pinning one immutable cohort model. Shape cannot reach proceed until every required shape field equals an answer that provably originated from the founder via a durable attestation primitive. Depends on LB-21 provenance.",
+  "behaviors": [
+    {
+      "id": "LB-25-B1",
+      "title": "Shape proceed is refused without a complete discovery record",
+      "trigger": "A shape with disposition proceed is recorded for a post-cutover issue that has no discovery answer for one or more required shape fields",
+      "expected": "The shape gate refuses proceed with a missing_discovery blocker that names each field lacking an answer, and the issue does not become shape-ready",
+      "verify": "Through the real CLI and MCP surfaces against a disposable database, attempt a proceed shape on a fresh issue with no answers and observe missing_discovery naming the fields, then supply valid founder-issued answers for all fields and observe the shape reach ready"
+    },
+    {
+      "id": "LB-25-B2",
+      "title": "Each shape field must canonically EQUAL its attested answer, scalar or structured",
+      "trigger": "A discovery answer exists for a required shape field but the recorded shape value is not canonically equal to that answer, for a scalar field or for a structured field (non_goals array, risks array-of-objects)",
+      "expected": "The shape gate refuses proceed with an unbacked_field blocker naming that field. Comparison is deterministic: scalar fields use exact string equality after trimming outer whitespace; non_goals and risks are compared as order-insensitive multisets over their trimmed elements (risks as trimmed {risk,mitigation} pairs), so a reordering is equal but any changed element is not",
+      "verify": "Against a disposable database, for a scalar field diverge the shape value and assert unbacked_field, then align and assert proceed; AND for a structured field (non_goals or risks) assert that a reordered value is accepted as canonically equal while a changed element is refused by name"
+    },
+    {
+      "id": "LB-25-B3",
+      "title": "Only a founder-issued attestation counts; agent self-assertion is refused",
+      "trigger": "A discovery answer is submitted whose origin is an agent ingress (mcp or cli) or whose attester is a caller-supplied string without a valid capability token",
+      "expected": "The answer is rejected as unattested; the gate accepts an answer only when its origin is validated as founder-issued via the durable attestation primitive (a valid one-time token and a non-agent ingress per LB-21 provenance)",
+      "verify": "Attempt to record a discovery answer through the agent mcp/cli ingress and via a caller-supplied attester without a token and observe rejection, then submit the same answer through the founder attestation round-trip with a valid token and observe acceptance"
+    },
+    {
+      "id": "LB-25-B4",
+      "title": "The attestation primitive parks until the founder answers out-of-band",
+      "trigger": "A discovery request is opened for a field",
+      "expected": "The request is durable and pending until the founder answers through the out-of-band channel; the delivered answer is stored with its origin and time and is retrievable, and the in-session agent cannot satisfy the request from its own ingress",
+      "verify": "Open a discovery request against a disposable database, confirm it is pending and unsatisfiable from the agent ingress, deliver a founder answer with a valid token through the out-of-band channel, and read the durable answer with origin and timestamp back from the substrate"
+    },
+    {
+      "id": "LB-25-B5",
+      "title": "Grandfather cohort is stamped at creation and never reclassified",
+      "trigger": "The gate evaluates an issue, and separately the gate is disabled and re-enabled",
+      "expected": "An issue's cohort (pre_gate or gated) is stamped immutably when the issue is created relative to the cutover and never changes; disabling or re-enabling the gate does not reclassify any issue; a pre_gate issue's existing shape is unaffected while a gated issue is subject to the gate",
+      "verify": "Against a disposable database seeded with a pre-cutover issue and a post-cutover issue, assert the pre_gate one is unaffected and the gated one is held, then toggle the gate switch off and on and assert no issue's cohort changed"
+    },
+    {
+      "id": "LB-25-B6",
+      "title": "The visualizer surfaces the discovery gate",
+      "trigger": "The visualizer renders an issue whose shape is held for missing, mismatched, or unattested discovery answers",
+      "expected": "A discovery gate node shows, per required shape field, whether it is answered, value-matched, and founder-attested",
+      "verify": "Render the graph for a discovery-held issue and observe the discovery node listing each field's answered/matched/attested state",
+      "advisory": true
+    }
+  ],
+  "planning": {
+    "outcome": "A shape cannot reach proceed unless every required shape field equals an answer that provably originated from the founder, closing the premise-injection hole at the top of the pipeline in a way an in-session agent cannot forge.",
+    "appetite": "One coherent slice: a durable founder attestation primitive, a value-binding field-isomorphic gate check in the existing shape path, an immutable cutover cohort, and read-model exposure.",
+    "non_goals": [
+      "Initiative and epic level scoping, which depends on LB-23 tiers (later slice)",
+      "Multi-party attestation; founder-only in this slice",
+      "The relentless interview experience itself; this slice is the gate and the attestation primitive, not the interview UX",
+      "Cryptographic hardening beyond a one-time token plus LB-21 ingress cross-check (named residual risk)"
+    ],
+    "work_units": [
+      {
+        "id": "attestation-primitive",
+        "title": "Add the durable founder attestation primitive with provenance validation",
+        "behavior_ids": [
+          "LB-25-B3",
+          "LB-25-B4"
+        ],
+        "done_when": "A discovery request parks until answered out-of-band with a valid one-time token, the answer's founder origin is validated against LB-21 ingress provenance, and an agent-ingress or tokenless answer is refused"
+      },
+      {
+        "id": "discovery-gate",
+        "title": "Value-binding field-isomorphic gate on shape proceed with an immutable cohort",
+        "behavior_ids": [
+          "LB-25-B1",
+          "LB-25-B2",
+          "LB-25-B5"
+        ],
+        "done_when": "Proceed is refused with named fields until every required shape field equals a founder-attested answer, and cohort classification is immutable across gate toggles Structured fields (non_goals, risks) compare by order-insensitive canonical form."
+      },
+      {
+        "id": "discovery-ui",
+        "title": "Surface the discovery gate in the visualizer",
+        "behavior_ids": [
+          "LB-25-B6"
+        ],
+        "done_when": "A discovery-held issue shows each field's answered, matched, and attested state"
+      }
+    ],
+    "proofs": [
+      {
+        "behavior_id": "LB-25-B1",
+        "tier": "wired",
+        "method": "Attempt proceed with no answers through CLI and MCP, observe missing_discovery naming fields, supply valid founder answers, observe ready."
+      },
+      {
+        "behavior_id": "LB-25-B2",
+        "tier": "wired",
+        "method": "Exercise BOTH a scalar field (diverge then align) AND a structured field (non_goals or risks): assert a reordered structured value is accepted as canonically equal and a changed element is refused, so the proof cannot pass on scalar fields alone."
+      },
+      {
+        "behavior_id": "LB-25-B3",
+        "tier": "wired",
+        "method": "Submit an answer via the agent ingress and via a tokenless caller-supplied attester and assert rejection, then via the founder round-trip with a valid token and assert acceptance."
+      },
+      {
+        "behavior_id": "LB-25-B4",
+        "tier": "live",
+        "method": "Open a request, confirm it is pending and unsatisfiable from the agent ingress, deliver a founder answer out-of-band with a valid token, read the durable answer with origin and timestamp."
+      },
+      {
+        "behavior_id": "LB-25-B5",
+        "tier": "wired",
+        "method": "Seed a pre-cutover and a post-cutover issue, assert exempt vs held, toggle the gate off and on, assert no cohort changed."
+      }
+    ],
+    "production_wiring": "New discovery table in db.ts migrate() keyed by (issue_id, field_key) with answer, attested_by, attested_at, and origin (the LB-21 trigger_type of the ingress that wrote it); plus an immutable gate_cohort marker stamped on issues at creation relative to a recorded discovery cutover. A durable attestation primitive: discovery_request (agent-callable via MCP/CLI) opens a pending ask and issues a one-time capability token delivered out-of-band through the served web UI (loopbreaker serve) or the founder terminal, never returned on the agent ingress; discovery_respond accepts an answer only with a valid unused token AND a non-agent origin per LB-21 provenance, and marks the ask answered. shapeState/recordShape in src/domain.ts gain the gate: a proceed disposition requires, for every required shape field, a discovery row whose answer is canonically equal to the shape value and whose origin is founder-validated, else a missing_discovery / unbacked_field / unattested_field blocker naming the field, unless the issue's cohort is pre_gate. A default-on LOOPBREAKER_DISCOVERY_GATE switch disables the requirement without reclassifying cohorts. substrate() exposes per-field answered/matched/attested state and web/src/graph.ts renders the discovery node. Depends on LB-21 provenance ingress stamping. Value equality is one deterministic comparator per field type: scalar fields (problem, appetite, smallest_slice, success_signal, reversibility, decision_owner) use exact string equality after trimming outer whitespace; non_goals is an order-insensitive multiset of its trimmed string elements; risks is an order-insensitive multiset of its trimmed {risk,mitigation} pairs. Both the discovery answer and the shape value are normalized to this canonical form before comparison, so reordering is equal and any changed element is not.",
+    "rollback": "Set LOOPBREAKER_DISCOVERY_GATE=off. The shape gate then behaves exactly as today, the discovery and attestation tables are inert, and no issue's immutable cohort is changed. No data loss.",
+    "migration": "Additive tables and an immutable gate_cohort marker. Issues that exist before the recorded cutover are stamped pre_gate and grandfathered; issues created after are stamped gated. The stamp is written once at classification and never recomputed, so toggling the gate cannot reclassify a cohort.",
+    "decision_owner": "ben@rordi.ai",
+    "risks": [
+      {
+        "risk": "An in-session agent that exfiltrates the one-time token could forge a founder answer.",
+        "mitigation": "Token delivered outside the agent session plus an LB-21 ingress cross-check that refuses agent origins; deeper hardening is a named non-goal."
+      },
+      {
+        "risk": "Hard dependency on LB-21 provenance stamping.",
+        "mitigation": "LB-21 is planned and admitted; this slice names it a prerequisite and the origin check is the reason provenance was worth building."
+      },
+      {
+        "risk": "Grandfathering leaves a mix of gated and pre_gate shapes.",
+        "mitigation": "The cohort is stamped and exposed per issue, so the mix is explicit rather than silent."
+      }
+    ]
+  }
+}

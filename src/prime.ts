@@ -1,5 +1,6 @@
 import type { LoopbreakerDb } from "./db.js";
 import { DomainError, substrate } from "./domain.js";
+import type { ShipState } from "./types.js";
 
 export interface PrimeAuthorityChain {
   shape: { disposition: string | null; ready: boolean };
@@ -45,14 +46,21 @@ export function resolveIssue(db: LoopbreakerDb, explicit?: string): string {
   return active;
 }
 
-function nextActionFor(gate: string, planningReviewNextAction: string): string {
+function nextActionFor(gate: ShipState["gate"], planningReviewNextAction: string): string {
   switch (gate) {
     case "shape": return "record shape proceed";
     case "planning": return "reach planning health ready";
     case "planning_review": return planningReviewNextAction;
     case "verification": return "verify or waive enforced behaviors";
     case "ready": return "ship";
-    default: return "ship";
+    default: {
+      // Fail closed: an unrecognized gate must never resolve to "ship". The `never`
+      // binding also makes adding a new ShipState["gate"] literal a compile error here,
+      // so a future gate can't silently inherit the ship instruction.
+      const unreachable: never = gate;
+      void unreachable;
+      return "hold — unrecognized shipping gate";
+    }
   }
 }
 

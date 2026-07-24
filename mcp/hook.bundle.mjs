@@ -504,8 +504,11 @@ function nextActionFor(gate, planningReviewNextAction) {
       return "verify or waive enforced behaviors";
     case "ready":
       return "ship";
-    default:
-      return "ship";
+    default: {
+      const unreachable = gate;
+      void unreachable;
+      return "hold \u2014 unrecognized shipping gate";
+    }
   }
 }
 function composePrime(db, issueId) {

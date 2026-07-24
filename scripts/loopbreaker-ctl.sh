@@ -36,6 +36,10 @@ SOCKET="${HERDR_SOCKET_PATH:-${HOME}/.config/herdr/herdr.sock}"
 LOOPBREAKER_DB="${LOOPBREAKER_DB:-${HOME}/.config/loopbreaker/loopbreaker.db}"
 # How tailscale serve exposes the visualizer: "https" (default) or "http" (Headscale/.internal).
 SERVE_MODE="${LOOPBREAKER_SERVE_MODE:-https}"
+# The tailnet-side https port. Deliberately NOT the bare 443: other plugins claim their own
+# ports on this host (Collie holds 443), and `tailscale serve --bg <port>` without an explicit
+# --https would replace whatever already owns 443. Always claim a dedicated port instead.
+TAILNET_PORT="${LOOPBREAKER_TAILNET_PORT:-8446}"
 NODE="$(command -v node || true)"
 PNPM="$(command -v pnpm || true)"
 WEB_DIST="${PLUGIN_ROOT}/web-dist/index.html"
@@ -71,7 +75,7 @@ self_dnsname() {
 visualizer_url() {
   local name; name="$(self_dnsname)"
   if [ -z "$name" ]; then echo "http://127.0.0.1:${PORT} (Tailscale name unavailable)"; return; fi
-  if [ "$SERVE_MODE" = "http" ]; then echo "http://${name}:${PORT}"; else echo "https://${name}"; fi
+  if [ "$SERVE_MODE" = "http" ]; then echo "http://${name}:${PORT}"; else echo "https://${name}:${TAILNET_PORT}"; fi
 }
 
 bridge_ready() {
@@ -215,8 +219,8 @@ cmd_serve() {
       echo "note: tailscale serve failed (try 'sudo tailscale set --operator=\$USER'):"; cat "$out"
     fi
   else
-    if tailscale serve --bg "$PORT" >"$out" 2>&1; then
-      echo "tailscale serve (https) → tailnet :443 -> 127.0.0.1:${PORT}"
+    if tailscale serve --bg --https="$TAILNET_PORT" "$PORT" >"$out" 2>&1; then
+      echo "tailscale serve (https) → tailnet :${TAILNET_PORT} -> 127.0.0.1:${PORT}"
     else
       echo "note: tailscale serve (https) failed — on Headscale/.internal use LOOPBREAKER_SERVE_MODE=http:"; cat "$out"
     fi
@@ -229,8 +233,8 @@ cmd_unserve() {
     tailscale serve --http="$PORT" off >/dev/null 2>&1 || true
     echo "tailscale serve: removed http :${PORT} mapping"
   else
-    tailscale serve --https=443 off >/dev/null 2>&1 || true
-    echo "tailscale serve: removed https :443 mapping"
+    tailscale serve --https="$TAILNET_PORT" off >/dev/null 2>&1 || true
+    echo "tailscale serve: removed https :${TAILNET_PORT} mapping"
   fi
 }
 
@@ -254,7 +258,9 @@ cmd_substrate() {
   [ -n "$NODE" ] || { echo "error: node not found on PATH" >&2; exit 1; }
   local active
   active="$( ( cd "${PLUGIN_ROOT}" && LOOPBREAKER_DB="$LOOPBREAKER_DB" "$NODE" dist/cli.js link --show --db "$LOOPBREAKER_DB" 2>/dev/null ) || true )"
-  if echo "$active" | grep -q 'active_issue'; then
+  # `link --show` prints "active_issue: null" when nothing is linked, so a bare substring test for
+  # "active_issue" matches either way. Treat null-or-absent as unlinked and fall back to the dashboard.
+  if [ -n "$active" ] && ! echo "$active" | grep -qE 'active_issue: *null'; then
     ( cd "${PLUGIN_ROOT}" && LOOPBREAKER_DB="$LOOPBREAKER_DB" "$NODE" dist/cli.js prime --db "$LOOPBREAKER_DB" ) || true
   else
     ( cd "${PLUGIN_ROOT}" && LOOPBREAKER_DB="$LOOPBREAKER_DB" "$NODE" dist/cli.js --db "$LOOPBREAKER_DB" ) || true

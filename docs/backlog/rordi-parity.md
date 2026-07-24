@@ -108,3 +108,32 @@ Once LB-23 lands, add an initiative→epic→issue portfolio view + an attention
 Rordi's Map v2 (force-directed, initiative territories, semantic LOD) and FleetStrip (needs-you
 queue). This is where the "UI structure missing from Rordi" gets built into loopbreaker's own `web/`,
 supervised by the Herdr plugin (`herdr-plugin.toml`).
+
+---
+
+## Discovery-gate campaign (LB-25 = first slice)
+
+The whole session exposed a structural hole: loopbreaker's gate chain verifies *internal
+consistency* (does each stage derive from the one above) but never *premise correctness* (is the
+shape's top-level premise right). The shape-strategy skill even instructs the agent NOT to interview
+("do not conduct an exhaustive interview... batch at most four questions"), which is the exact
+license that let an agent-invented premise (LB-20's tailnet requirement) get hardened into a
+mandatory enforced behavior by the review's own rigor.
+
+Founder decision (2026-07-24, ben@rordi.ai): add a **discovery gate** at the top of the pipeline —
+the human-premise bracket that mirrors independent planning-review at the bottom. Enforcement is
+**mechanical attestation + a durable hil_ask-style primitive** (they compose: hil_ask is the pipe,
+the attestation gate is the valve). Binding is **field-isomorphic, gate-enforced**. Parties:
+**founder only**. Appetite: **a larger campaign**, delivered slice by slice.
+
+Basis skills: Matt Pocock's `grill-me` (relentless 16-50 question interview) + local `rordi-interview`
+(durable `hil_ask` human-judgment gate) + `rordi-research` (feeds the interview).
+
+Slices, ordered:
+- **LB-25 — attestation-first, issue level (first slice, shaped + planned):** shape holds `proceed`
+  until every required shape field traces to a non-empty founder-attested discovery record, via
+  existing CLI/MCP surfaces. Pre-gate issues grandfathered.
+- **Later — durable HIL primitive:** port `hil_ask` (durable inbox, no timeout) into loopbreaker's MCP.
+- **Later — initiative/epic scoping:** fire the gate at the bet levels; issues inherit the epic's
+  attested premise. Depends on **LB-23 tiers being implemented**.
+- **Later — the interview experience:** the grill-me-style relentless decision-tree walk itself.
