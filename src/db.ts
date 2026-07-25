@@ -1,7 +1,9 @@
 import { mkdirSync } from "node:fs";
+import { userInfo } from "node:os";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
+  Provenance,
   BehaviorRow,
   EvidenceRow,
   FindingRow,
@@ -16,15 +18,66 @@ import type {
 
 export const DEFAULT_DB = ".loopbreaker/loopbreaker.db";
 
+/**
+ * LB-21 — the ten domain tables that carry the provenance triple. `workspace`
+ * is excluded: it holds one singleton binding row, not a state progression.
+ */
+export const PROVENANCE_TABLES = [
+  "issues",
+  "behaviors",
+  "review_passes",
+  "evidence",
+  "findings",
+  "waivers",
+  "planning_profiles",
+  "shape_assessments",
+  "planning_review_passes",
+  "planning_findings",
+] as const;
+
+/**
+ * The provenance used when a caller opens a handle without declaring an
+ * ingress. Defaults to `cli`/`unknown` rather than null so `triggered_by` is
+ * never null, per LB-21-B3.
+ */
+export const DEFAULT_PROVENANCE: Provenance = { trigger_type: "cli", triggered_by: "unknown", trigger_data: null };
+
 export class LoopbreakerDb {
   readonly path: string;
   readonly raw: DatabaseSync;
+  /** LB-21 — the ingress that opened this handle. Stamped on every write. */
+  readonly provenance: Provenance;
 
-  constructor(path = process.env.LOOPBREAKER_DB ?? DEFAULT_DB) {
+  constructor(path = process.env.LOOPBREAKER_DB ?? DEFAULT_DB, provenance: Provenance = DEFAULT_PROVENANCE) {
     this.path = resolve(path);
+    this.provenance = provenance;
     mkdirSync(dirname(this.path), { recursive: true });
     this.raw = new DatabaseSync(this.path);
     this.raw.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
+  }
+
+  /**
+   * LB-21 — refine the actor once the ingress learns it. The only caller is the
+   * MCP server, which cannot know the client name until `initialize` has
+   * completed, after the handle is already open.
+   *
+   * This is instance-level and set once, NOT per-call ambient state: the shared
+   * MCP handle is closed over by interleaving async handlers, and mutating
+   * provenance per tool call on that instance would be unsafe. Per-tool
+   * granularity is a named non-goal of this slice.
+   */
+  setTriggeredBy(actor: string): void {
+    const trimmed = actor.trim();
+    if (trimmed) this.provenance.triggered_by = trimmed;
+  }
+
+  /** The triple as positional bind values, in `trigger_type, triggered_by, trigger_data` order. */
+  provenanceValues(): [string, string, string | null] {
+    return [
+      this.provenance.trigger_type,
+      this.provenance.triggered_by,
+      this.provenance.trigger_data === null ? null : JSON.stringify(this.provenance.trigger_data),
+    ];
   }
 
   close(): void {
@@ -156,6 +209,19 @@ export class LoopbreakerDb {
     for (const column of ["trigger", "expected", "verify"]) {
       if (!behaviorColumns.has(column)) this.raw.exec(`ALTER TABLE behaviors ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
     }
+
+    // LB-21 — additive, nullable provenance columns on every written table.
+    // Existing rows stay null and read as the legacy source: the causing
+    // ingress is unknowable retroactively, so no backfill is attempted.
+    // Re-running changes nothing.
+    for (const table of PROVENANCE_TABLES) {
+      const existing = new Set(
+        (this.raw.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((column) => column.name),
+      );
+      for (const column of ["trigger_type", "triggered_by", "trigger_data"]) {
+        if (!existing.has(column)) this.raw.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
+      }
+    }
   }
 
   transaction<T>(fn: () => T): T {
@@ -212,10 +278,18 @@ export class LoopbreakerDb {
   }
 
   setPlanningProfile(issueId: string, profile: PlanningProfile): void {
+    // LB-21 write site: a profile setter, not a direct INSERT in domain.ts.
+    // The ON CONFLICT branch re-stamps, because an updated profile is a new row
+    // version and must carry the ingress that produced it.
     this.raw.prepare(`
-      INSERT INTO planning_profiles (issue_id, profile_json) VALUES (?, ?)
-      ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
-    `).run(issueId, JSON.stringify(profile));
+      INSERT INTO planning_profiles (issue_id, profile_json, trigger_type, triggered_by, trigger_data) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(issue_id) DO UPDATE SET
+        profile_json = excluded.profile_json,
+        updated_at = CURRENT_TIMESTAMP,
+        trigger_type = excluded.trigger_type,
+        triggered_by = excluded.triggered_by,
+        trigger_data = excluded.trigger_data
+    `).run(issueId, JSON.stringify(profile), ...this.provenanceValues());
   }
 
   shapeProfile(issueId: string): ShapeProfile | null {
@@ -224,10 +298,17 @@ export class LoopbreakerDb {
   }
 
   setShapeProfile(issueId: string, profile: ShapeProfile): void {
+    // LB-21 write site: the second profile setter. Same re-stamp rule as
+    // setPlanningProfile — a replaced shape is a new row version.
     this.raw.prepare(`
-      INSERT INTO shape_assessments (issue_id, profile_json) VALUES (?, ?)
-      ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
-    `).run(issueId, JSON.stringify(profile));
+      INSERT INTO shape_assessments (issue_id, profile_json, trigger_type, triggered_by, trigger_data) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(issue_id) DO UPDATE SET
+        profile_json = excluded.profile_json,
+        updated_at = CURRENT_TIMESTAMP,
+        trigger_type = excluded.trigger_type,
+        triggered_by = excluded.triggered_by,
+        trigger_data = excluded.trigger_data
+    `).run(issueId, JSON.stringify(profile), ...this.provenanceValues());
   }
 
   activeIssue(): string | null {
@@ -250,8 +331,26 @@ export class LoopbreakerDb {
   }
 }
 
-export function openDb(path?: string): LoopbreakerDb {
-  const db = new LoopbreakerDb(path);
+/**
+ * LB-21 — every ingress declares itself here. A caller that omits `provenance`
+ * gets {@link DEFAULT_PROVENANCE} (`cli`/`unknown`) rather than nulls, so
+ * `triggered_by` is never null on any written row.
+ */
+export function openDb(path?: string, provenance?: Provenance): LoopbreakerDb {
+  const db = new LoopbreakerDb(path, provenance);
   db.migrate();
   return db;
+}
+
+/** Resolve the `cli` ingress actor: LOOPBREAKER_ACTOR, else the OS username, else `unknown`. */
+export function cliActor(): string {
+  const declared = process.env.LOOPBREAKER_ACTOR?.trim();
+  if (declared) return declared;
+  try {
+    const name = userInfo().username?.trim();
+    if (name) return name;
+  } catch {
+    // userInfo() throws on some sandboxes with no passwd entry; fall through.
+  }
+  return "unknown";
 }

@@ -87,7 +87,10 @@ function planningSummary(health: PlanningHealth) {
 }
 
 export async function runMcp(dbPath?: string): Promise<void> {
-  const db = openDb(dbPath);
+  // LB-21 ingress: MCP. The client name is not known until `initialize`
+  // completes, so the handle opens with the fail-safe literal and is refined
+  // once, after connect.
+  const db = openDb(dbPath, { trigger_type: "mcp", triggered_by: "mcp-client", trigger_data: null });
   const server = new McpServer(
     { name: "loopbreaker", version: "0.4.0" },
     {
@@ -376,4 +379,7 @@ export async function runMcp(dbPath?: string): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  // Now that `initialize` has completed, attribute writes to the real client.
+  // Falls back to the literal `mcp-client` when the peer reported no name.
+  db.setTriggeredBy(server.server.getClientVersion()?.name ?? "mcp-client");
 }

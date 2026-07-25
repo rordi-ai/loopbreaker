@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { DEFAULT_DB, openDb, type LoopbreakerDb } from "./db.js";
+import { DEFAULT_DB, cliActor, openDb, type LoopbreakerDb } from "./db.js";
 import { dispatchHook } from "./hooks.js";
 
 /**
@@ -57,7 +57,9 @@ async function main(): Promise<void> {
   try {
     const raw = await readStdin();
     if (name === undefined) return;
-    db = openDb(dbPath);
+    // LB-21 ingress: the bundled plugin hook. Reachable as a trigger_type
+    // value, but writes no rows in this slice — hooks are read-only.
+    db = openDb(dbPath, { trigger_type: "plugin_hook", triggered_by: cliActor(), trigger_data: null });
     const result = dispatchHook(db, name, raw);
     if (result) process.stdout.write(`${result}\n`);
   } catch {

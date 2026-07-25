@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DomainError, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertPlanningFinding, verifyBehavior, createWaiver, importContract } from "./domain.js";
-import { openDb, type LoopbreakerDb } from "./db.js";
+import { cliActor, openDb, type LoopbreakerDb } from "./db.js";
 import { dispatchHook } from "./hooks.js";
 import { primePayload } from "./prime.js";
 import type { PlanningHealth, PlanningProfile, ShapeProfile } from "./types.js";
@@ -291,7 +291,9 @@ async function dispatchHookCommand(name: string | undefined, dbPath: string | un
   try {
     const raw = await readStdin();
     if (name === undefined) return;
-    db = openDb(dbPath);
+    // LB-21 ingress: the CLI `hook` subcommand. Reachable as a trigger_type
+    // value, but writes no rows in this slice — hooks are read-only.
+    db = openDb(dbPath, { trigger_type: "hook", triggered_by: cliActor(), trigger_data: null });
     const result = runHookCommand(name, raw, db);
     if (result) process.stdout.write(`${result}\n`);
   } catch {
@@ -319,7 +321,13 @@ async function main(): Promise<void> {
     await dispatchHookCommand(positional[1], dbPath);
     return;
   }
-  const db = openDb(dbPath);
+  // LB-21 ingress: the CLI. `command` is parsed before openDb, so the
+  // subcommand is available as trigger_data.
+  const db = openDb(dbPath, {
+    trigger_type: "cli",
+    triggered_by: cliActor(),
+    trigger_data: command ? { subcommand: command } : null,
+  });
   let keepOpen = false;
   try {
     if (!command) {

@@ -368,17 +368,23 @@ export function importContract(
       }
     }
 
+    // LB-21 write site 1/12 — issues. The ON CONFLICT branch re-stamps: a
+    // re-imported issue is a new row version.
     db.raw.prepare(`
-      INSERT INTO issues (id, title, description) VALUES (?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description
-    `).run(input.issueId, input.title, input.description ?? "");
+      INSERT INTO issues (id, title, description, trigger_type, triggered_by, trigger_data) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title, description = excluded.description,
+        trigger_type = excluded.trigger_type, triggered_by = excluded.triggered_by, trigger_data = excluded.trigger_data
+    `).run(input.issueId, input.title, input.description ?? "", ...db.provenanceValues());
 
     if (!existing || (db.reviewPasses(input.issueId).length === 0 && !planningReviewState(db, input.issueId).approved)) {
       db.raw.prepare("DELETE FROM behaviors WHERE issue_id = ?").run(input.issueId);
+      // LB-21 write site 2/12 — behaviors on insert.
       const statement = db.raw.prepare(`
-        INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal, trigger_type, triggered_by, trigger_data)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
       `);
+      const provenance = db.provenanceValues();
       input.behaviors.forEach((behavior, index) => {
         statement.run(
           behavior.id,
@@ -389,6 +395,7 @@ export function importContract(
           behavior.verify,
           behavior.advisory ? 0 : 1,
           index + 1,
+          ...provenance,
         );
       });
     }
@@ -432,16 +439,18 @@ export function upsertPlanningFinding(
     if (!pass) throw new DomainError("planning_review_pass_not_found", `Planning-review pass ${input.reviewPassNumber} has not been recorded for ${input.issueId}.`);
     passId = pass.id;
   }
+  // LB-21 write site 3/12 — planning_findings.
   db.raw.prepare(`
-    INSERT INTO planning_findings (id, issue_id, planning_review_pass_id, stage, severity, status, title, reachability, impact, smallest_fix)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO planning_findings (id, issue_id, planning_review_pass_id, stage, severity, status, title, reachability, impact, smallest_fix, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       planning_review_pass_id = COALESCE(excluded.planning_review_pass_id, planning_findings.planning_review_pass_id),
       stage = excluded.stage, severity = excluded.severity, status = excluded.status,
       title = excluded.title, reachability = COALESCE(excluded.reachability, planning_findings.reachability),
-      impact = COALESCE(excluded.impact, planning_findings.impact), smallest_fix = COALESCE(excluded.smallest_fix, planning_findings.smallest_fix)
+      impact = COALESCE(excluded.impact, planning_findings.impact), smallest_fix = COALESCE(excluded.smallest_fix, planning_findings.smallest_fix),
+      trigger_type = excluded.trigger_type, triggered_by = excluded.triggered_by, trigger_data = excluded.trigger_data
   `).run(input.findingId, input.issueId, passId, input.stage, input.severity, input.status, input.title,
-    input.reachability ?? null, input.impact ?? null, input.smallestFix ?? null);
+    input.reachability ?? null, input.impact ?? null, input.smallestFix ?? null, ...db.provenanceValues());
   return substrate(db, input.issueId);
 }
 
@@ -472,9 +481,9 @@ export function recordPlanningReviewPass(
     throw new DomainError("open_planning_blockers", `Approval is blocked by ${current.planning_review.open_blocking_count} open P0/P1 planning finding(s).`);
   }
   db.raw.prepare(`
-    INSERT INTO planning_review_passes (id, issue_id, pass_number, kind, verdict, summary)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(randomUUID(), input.issueId, input.passNumber, planningReviewKind(input.passNumber), input.verdict, input.summary);
+    INSERT INTO planning_review_passes (id, issue_id, pass_number, kind, verdict, summary, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, input.passNumber, planningReviewKind(input.passNumber), input.verdict, input.summary, ...db.provenanceValues());
   return substrate(db, input.issueId);
 }
 
@@ -512,9 +521,9 @@ export function recordPass(
   }
 
   db.raw.prepare(`
-    INSERT INTO review_passes (id, issue_id, pass_number, kind, verdict, summary)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(randomUUID(), input.issueId, input.passNumber, reviewKind(input.passNumber), input.verdict, input.summary);
+    INSERT INTO review_passes (id, issue_id, pass_number, kind, verdict, summary, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, input.passNumber, reviewKind(input.passNumber), input.verdict, input.summary, ...db.provenanceValues());
   return substrate(db, input.issueId);
 }
 
@@ -561,8 +570,9 @@ export function upsertFinding(
   db.raw.prepare(`
     INSERT INTO findings (
       id, issue_id, review_pass_id, behavior_id, severity, status, title,
-      blocker_reachability, blocker_impact, blocker_rollback, smallest_fix
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      blocker_reachability, blocker_impact, blocker_rollback, smallest_fix,
+      trigger_type, triggered_by, trigger_data
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       review_pass_id = COALESCE(excluded.review_pass_id, findings.review_pass_id),
       behavior_id = COALESCE(excluded.behavior_id, findings.behavior_id),
@@ -572,7 +582,8 @@ export function upsertFinding(
       blocker_reachability = COALESCE(excluded.blocker_reachability, findings.blocker_reachability),
       blocker_impact = COALESCE(excluded.blocker_impact, findings.blocker_impact),
       blocker_rollback = COALESCE(excluded.blocker_rollback, findings.blocker_rollback),
-      smallest_fix = COALESCE(excluded.smallest_fix, findings.smallest_fix)
+      smallest_fix = COALESCE(excluded.smallest_fix, findings.smallest_fix),
+      trigger_type = excluded.trigger_type, triggered_by = excluded.triggered_by, trigger_data = excluded.trigger_data
   `).run(
     input.findingId,
     input.issueId,
@@ -585,6 +596,7 @@ export function upsertFinding(
     input.impact ?? null,
     input.rollback ?? null,
     input.smallestFix ?? null,
+    ...db.provenanceValues(),
   );
   return substrate(db, input.issueId);
 }
@@ -598,9 +610,9 @@ export function recordEvidence(
     throw new DomainError("behavior_not_found", `Behavior ${input.behaviorId} is not a child of ${input.issueId}.`);
   }
   db.raw.prepare(`
-    INSERT INTO evidence (id, issue_id, behavior_id, tier, verdict, summary, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(randomUUID(), input.issueId, input.behaviorId ?? null, input.tier, input.verdict, input.summary, input.source ?? "");
+    INSERT INTO evidence (id, issue_id, behavior_id, tier, verdict, summary, source, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, input.behaviorId ?? null, input.tier, input.verdict, input.summary, input.source ?? "", ...db.provenanceValues());
   return substrate(db, input.issueId);
 }
 
@@ -623,7 +635,12 @@ export function verifyBehavior(db: LoopbreakerDb, behaviorId: string, evidenceId
       "Attach one passing wired or live capability proof; use lower-level tests as supporting fault injection.",
     );
   }
-  db.raw.prepare("UPDATE behaviors SET status = 'verified' WHERE id = ?").run(behaviorId);
+  // LB-21 write site 9/12 — the verifyBehavior status progression. A status
+  // change is a new row version, so it re-stamps rather than inheriting the
+  // provenance of whichever ingress originally inserted the behavior.
+  db.raw.prepare(
+    "UPDATE behaviors SET status = 'verified', trigger_type = ?, triggered_by = ?, trigger_data = ? WHERE id = ?",
+  ).run(...db.provenanceValues(), behaviorId);
   return substrate(db, behavior.issue_id);
 }
 
@@ -636,10 +653,15 @@ export function createWaiver(
   if (!behavior) throw new DomainError("behavior_not_found", `Behavior ${input.behaviorId} is not a child of ${input.issueId}.`);
   if (!behavior.enforced) throw new DomainError("waiver_not_needed", "Advisory behaviors do not require a waiver.");
   db.raw.prepare(`
-    INSERT INTO waivers (id, issue_id, behavior_id, rationale, approved_by)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(behavior_id) DO UPDATE SET rationale = excluded.rationale, approved_by = excluded.approved_by
-  `).run(randomUUID(), input.issueId, input.behaviorId, input.rationale, input.approvedBy);
-  db.raw.prepare("UPDATE behaviors SET status = 'waived' WHERE id = ?").run(input.behaviorId);
+    INSERT INTO waivers (id, issue_id, behavior_id, rationale, approved_by, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(behavior_id) DO UPDATE SET
+      rationale = excluded.rationale, approved_by = excluded.approved_by,
+      trigger_type = excluded.trigger_type, triggered_by = excluded.triggered_by, trigger_data = excluded.trigger_data
+  `).run(randomUUID(), input.issueId, input.behaviorId, input.rationale, input.approvedBy, ...db.provenanceValues());
+  // LB-21 write site 10/12 — the second behaviour-status progression.
+  db.raw.prepare(
+    "UPDATE behaviors SET status = 'waived', trigger_type = ?, triggered_by = ?, trigger_data = ? WHERE id = ?",
+  ).run(...db.provenanceValues(), input.behaviorId);
   return substrate(db, input.issueId);
 }

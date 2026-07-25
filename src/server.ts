@@ -5,7 +5,7 @@ import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import type { LoopbreakerDb } from "./db.js";
-import { createWaiver, DomainError, recordEvidence, recordPass, substrate, verifyBehavior } from "./domain.js";
+import { createWaiver, DomainError, recordEvidence, recordPass, substrate, upsertFinding, verifyBehavior } from "./domain.js";
 
 const WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../web-dist");
 const CONTENT_TYPES: Record<string, string> = {
@@ -69,7 +69,20 @@ function demoAction(db: LoopbreakerDb, issueId: string, action: string): unknown
     recordEvidence(db, { issueId, behaviorId, tier: "wired", verdict: "pass", summary: "A real wired replay produced the external effect exactly once.", source: "demo://wired-replay" });
     const latest = db.evidence(issueId).filter((item) => item.behavior_id === behaviorId).at(-1);
     if (!latest) throw new DomainError("evidence_missing", "Could not find the newly recorded evidence.");
-    db.raw.prepare("UPDATE findings SET status = 'repaired' WHERE issue_id = ? AND behavior_id = ?").run(issueId, behaviorId);
+    // LB-21-B4: this was a raw `UPDATE findings` that bypassed src/domain.ts
+    // entirely, so the row it wrote could never carry provenance. Routed
+    // through the domain writer instead. upsertFinding's ON CONFLICT COALESCEs
+    // the blocker fields, so re-supplying id/severity/title preserves them.
+    for (const finding of db.findings(issueId).filter((item) => item.behavior_id === behaviorId)) {
+      upsertFinding(db, {
+        issueId,
+        findingId: finding.id,
+        behaviorId: finding.behavior_id ?? undefined,
+        severity: finding.severity,
+        status: "repaired",
+        title: finding.title,
+      });
+    }
     return verifyBehavior(db, behaviorId, latest.id);
   }
   if (action === "waive") return createWaiver(db, { issueId, behaviorId, rationale: "Demo operator accepts the named retry debt with cold-path rollback available.", approvedBy: "demo-human" });

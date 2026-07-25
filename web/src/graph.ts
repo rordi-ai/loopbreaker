@@ -29,6 +29,17 @@ function edge(
   return { id, source, target, type: "workflow", data, focusable: true };
 }
 
+/**
+ * LB-21 — render the provenance triple in a node footer. Rows written before
+ * the columns existed read as `legacy`: the causing ingress is unknowable
+ * retroactively, and no backfill is attempted, so the read model says so
+ * rather than implying an ingress it cannot know.
+ */
+function provenanceLabel(row: { trigger_type?: string | null; triggered_by?: string | null }): string {
+  if (!row.trigger_type) return "legacy";
+  return row.triggered_by ? `${row.trigger_type} · ${row.triggered_by}` : row.trigger_type;
+}
+
 export function buildReviewGraph(substrate: Substrate): ReviewGraph {
   const nodes: ReviewGraph["nodes"] = [];
   const edges: ReviewGraph["edges"] = [];
@@ -139,7 +150,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
         { label: "EXPECT", value: behavior.expected },
         { label: "PROVE", value: behavior.verify },
       ],
-      footer: `${behavior.evidence_ids.length} evidence · ${behavior.waiver_id ? "waiver attached" : "no waiver"}`,
+      footer: `${behavior.evidence_ids.length} evidence · ${behavior.waiver_id ? "waiver attached" : "no waiver"} · ${provenanceLabel(behavior)}`,
       handles: { target: true, source: true },
     }));
     edges.push(edge(`planning-review:${behavior.id}`, "planning-review", behaviorNodeId, { tone: substrate.planning_review.approved ? "blue" : "red", dashed: !substrate.planning_review.approved, animated: behavior.status === "pending" }));
@@ -159,7 +170,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
       status: item.verdict,
       tone: item.verdict === "pass" ? "green" : "red",
       lines: item.source ? [{ label: "SOURCE", value: item.source }] : undefined,
-      footer: item.behavior_id ?? "issue-level evidence",
+      footer: `${item.behavior_id ?? "issue-level evidence"} · ${provenanceLabel(item)}`,
       handles: { target: true, source: true },
     }));
     edges.push(edge(`evidence-link:${item.id}`, item.behavior_id ? `behavior:${item.behavior_id}` : "planning", evidenceId, {

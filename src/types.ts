@@ -1,3 +1,36 @@
+/**
+ * LB-21 — the ingress that opened the database handle. Instance-carried, not
+ * per-call: `mcp.ts` opens one shared handle closed over by interleaving async
+ * handlers, so mutable per-call ambient state on that instance would be unsafe.
+ * Per-MCP-tool granularity is an explicit non-goal of this slice.
+ */
+export type TriggerType = "cli" | "mcp" | "hook" | "plugin_hook";
+
+/** LB-21 — the provenance triple stamped on every row version the mutation path writes. */
+export interface Provenance {
+  /** The ingress that called `openDb`. */
+  trigger_type: TriggerType;
+  /**
+   * Never null. For `cli`: `LOOPBREAKER_ACTOR` when set, else the OS username,
+   * else the literal `unknown`. For `mcp`: the client name reported at
+   * initialize when available, else the literal `mcp-client`.
+   */
+  triggered_by: string;
+  /**
+   * Nullable JSON object. For `cli` it carries the parsed subcommand, which is
+   * known before `openDb` is called. Null for `mcp`, `hook`, and `plugin_hook`
+   * in this slice.
+   */
+  trigger_data: Record<string, unknown> | null;
+}
+
+/** The provenance triple as it appears on a persisted row and in the read model. */
+export interface ProvenanceFields {
+  trigger_type: TriggerType | null;
+  triggered_by: string | null;
+  trigger_data: string | null;
+}
+
 export type BehaviorStatus = "pending" | "verified" | "failed" | "waived";
 export type EvidenceTier = "unit" | "wired" | "live";
 export type Verdict = "pass" | "fail";
@@ -75,14 +108,14 @@ export interface PlanningHealth {
   profile: PlanningProfile | null;
 }
 
-export interface IssueRow {
+export interface IssueRow extends ProvenanceFields {
   id: string;
   title: string;
   description: string;
   created_at: string;
 }
 
-export interface BehaviorRow {
+export interface BehaviorRow extends ProvenanceFields {
   id: string;
   issue_id: string;
   title: string;
@@ -94,7 +127,7 @@ export interface BehaviorRow {
   ordinal: number;
 }
 
-export interface EvidenceRow {
+export interface EvidenceRow extends ProvenanceFields {
   id: string;
   issue_id: string;
   behavior_id: string | null;
@@ -105,7 +138,7 @@ export interface EvidenceRow {
   created_at: string;
 }
 
-export interface ReviewPassRow {
+export interface ReviewPassRow extends ProvenanceFields {
   id: string;
   issue_id: string;
   pass_number: number;
@@ -116,7 +149,7 @@ export interface ReviewPassRow {
   created_at: string;
 }
 
-export interface PlanningReviewPassRow {
+export interface PlanningReviewPassRow extends ProvenanceFields {
   id: string;
   issue_id: string;
   pass_number: number;
@@ -126,7 +159,7 @@ export interface PlanningReviewPassRow {
   created_at: string;
 }
 
-export interface PlanningFindingRow {
+export interface PlanningFindingRow extends ProvenanceFields {
   id: string;
   issue_id: string;
   planning_review_pass_id: string | null;
@@ -139,7 +172,7 @@ export interface PlanningFindingRow {
   smallest_fix: string | null;
 }
 
-export interface FindingRow {
+export interface FindingRow extends ProvenanceFields {
   id: string;
   issue_id: string;
   review_pass_id: string | null;
@@ -153,7 +186,7 @@ export interface FindingRow {
   smallest_fix: string | null;
 }
 
-export interface WaiverRow {
+export interface WaiverRow extends ProvenanceFields {
   id: string;
   issue_id: string;
   behavior_id: string;

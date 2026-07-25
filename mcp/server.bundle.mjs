@@ -21112,14 +21112,52 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 var DEFAULT_DB = ".loopbreaker/loopbreaker.db";
+var PROVENANCE_TABLES = [
+  "issues",
+  "behaviors",
+  "review_passes",
+  "evidence",
+  "findings",
+  "waivers",
+  "planning_profiles",
+  "shape_assessments",
+  "planning_review_passes",
+  "planning_findings"
+];
+var DEFAULT_PROVENANCE = { trigger_type: "cli", triggered_by: "unknown", trigger_data: null };
 var LoopbreakerDb = class {
   path;
   raw;
-  constructor(path = process.env.LOOPBREAKER_DB ?? DEFAULT_DB) {
+  /** LB-21 — the ingress that opened this handle. Stamped on every write. */
+  provenance;
+  constructor(path = process.env.LOOPBREAKER_DB ?? DEFAULT_DB, provenance = DEFAULT_PROVENANCE) {
     this.path = resolve(path);
+    this.provenance = provenance;
     mkdirSync(dirname(this.path), { recursive: true });
     this.raw = new DatabaseSync(this.path);
     this.raw.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
+  }
+  /**
+   * LB-21 — refine the actor once the ingress learns it. The only caller is the
+   * MCP server, which cannot know the client name until `initialize` has
+   * completed, after the handle is already open.
+   *
+   * This is instance-level and set once, NOT per-call ambient state: the shared
+   * MCP handle is closed over by interleaving async handlers, and mutating
+   * provenance per tool call on that instance would be unsafe. Per-tool
+   * granularity is a named non-goal of this slice.
+   */
+  setTriggeredBy(actor) {
+    const trimmed = actor.trim();
+    if (trimmed) this.provenance.triggered_by = trimmed;
+  }
+  /** The triple as positional bind values, in `trigger_type, triggered_by, trigger_data` order. */
+  provenanceValues() {
+    return [
+      this.provenance.trigger_type,
+      this.provenance.triggered_by,
+      this.provenance.trigger_data === null ? null : JSON.stringify(this.provenance.trigger_data)
+    ];
   }
   close() {
     this.raw.close();
@@ -21248,6 +21286,14 @@ var LoopbreakerDb = class {
     for (const column of ["trigger", "expected", "verify"]) {
       if (!behaviorColumns.has(column)) this.raw.exec(`ALTER TABLE behaviors ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
     }
+    for (const table of PROVENANCE_TABLES) {
+      const existing = new Set(
+        this.raw.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name)
+      );
+      for (const column of ["trigger_type", "triggered_by", "trigger_data"]) {
+        if (!existing.has(column)) this.raw.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
+      }
+    }
   }
   transaction(fn) {
     this.raw.exec("BEGIN IMMEDIATE");
@@ -21293,9 +21339,14 @@ var LoopbreakerDb = class {
   }
   setPlanningProfile(issueId, profile) {
     this.raw.prepare(`
-      INSERT INTO planning_profiles (issue_id, profile_json) VALUES (?, ?)
-      ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
-    `).run(issueId, JSON.stringify(profile));
+      INSERT INTO planning_profiles (issue_id, profile_json, trigger_type, triggered_by, trigger_data) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(issue_id) DO UPDATE SET
+        profile_json = excluded.profile_json,
+        updated_at = CURRENT_TIMESTAMP,
+        trigger_type = excluded.trigger_type,
+        triggered_by = excluded.triggered_by,
+        trigger_data = excluded.trigger_data
+    `).run(issueId, JSON.stringify(profile), ...this.provenanceValues());
   }
   shapeProfile(issueId) {
     const row = this.raw.prepare("SELECT profile_json FROM shape_assessments WHERE issue_id = ?").get(issueId);
@@ -21303,9 +21354,14 @@ var LoopbreakerDb = class {
   }
   setShapeProfile(issueId, profile) {
     this.raw.prepare(`
-      INSERT INTO shape_assessments (issue_id, profile_json) VALUES (?, ?)
-      ON CONFLICT(issue_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = CURRENT_TIMESTAMP
-    `).run(issueId, JSON.stringify(profile));
+      INSERT INTO shape_assessments (issue_id, profile_json, trigger_type, triggered_by, trigger_data) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(issue_id) DO UPDATE SET
+        profile_json = excluded.profile_json,
+        updated_at = CURRENT_TIMESTAMP,
+        trigger_type = excluded.trigger_type,
+        triggered_by = excluded.triggered_by,
+        trigger_data = excluded.trigger_data
+    `).run(issueId, JSON.stringify(profile), ...this.provenanceValues());
   }
   activeIssue() {
     const row = this.raw.prepare("SELECT active_issue FROM workspace WHERE id = 1").get();
@@ -21324,8 +21380,8 @@ var LoopbreakerDb = class {
     `).run();
   }
 };
-function openDb(path) {
-  const db = new LoopbreakerDb(path);
+function openDb(path, provenance) {
+  const db = new LoopbreakerDb(path, provenance);
   db.migrate();
   return db;
 }
@@ -21637,15 +21693,18 @@ function importContract(db, input) {
       }
     }
     db.raw.prepare(`
-      INSERT INTO issues (id, title, description) VALUES (?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description
-    `).run(input.issueId, input.title, input.description ?? "");
+      INSERT INTO issues (id, title, description, trigger_type, triggered_by, trigger_data) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title, description = excluded.description,
+        trigger_type = excluded.trigger_type, triggered_by = excluded.triggered_by, trigger_data = excluded.trigger_data
+    `).run(input.issueId, input.title, input.description ?? "", ...db.provenanceValues());
     if (!existing || db.reviewPasses(input.issueId).length === 0 && !planningReviewState(db, input.issueId).approved) {
       db.raw.prepare("DELETE FROM behaviors WHERE issue_id = ?").run(input.issueId);
       const statement = db.raw.prepare(`
-        INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal, trigger_type, triggered_by, trigger_data)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
       `);
+      const provenance = db.provenanceValues();
       input.behaviors.forEach((behavior, index) => {
         statement.run(
           behavior.id,
@@ -21655,7 +21714,8 @@ function importContract(db, input) {
           behavior.expected,
           behavior.verify,
           behavior.advisory ? 0 : 1,
-          index + 1
+          index + 1,
+          ...provenance
         );
       });
     }
@@ -21685,13 +21745,14 @@ function upsertPlanningFinding(db, input) {
     passId = pass.id;
   }
   db.raw.prepare(`
-    INSERT INTO planning_findings (id, issue_id, planning_review_pass_id, stage, severity, status, title, reachability, impact, smallest_fix)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO planning_findings (id, issue_id, planning_review_pass_id, stage, severity, status, title, reachability, impact, smallest_fix, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       planning_review_pass_id = COALESCE(excluded.planning_review_pass_id, planning_findings.planning_review_pass_id),
       stage = excluded.stage, severity = excluded.severity, status = excluded.status,
       title = excluded.title, reachability = COALESCE(excluded.reachability, planning_findings.reachability),
-      impact = COALESCE(excluded.impact, planning_findings.impact), smallest_fix = COALESCE(excluded.smallest_fix, planning_findings.smallest_fix)
+      impact = COALESCE(excluded.impact, planning_findings.impact), smallest_fix = COALESCE(excluded.smallest_fix, planning_findings.smallest_fix),
+      trigger_type = excluded.trigger_type, triggered_by = excluded.triggered_by, trigger_data = excluded.trigger_data
   `).run(
     input.findingId,
     input.issueId,
@@ -21702,7 +21763,8 @@ function upsertPlanningFinding(db, input) {
     input.title,
     input.reachability ?? null,
     input.impact ?? null,
-    input.smallestFix ?? null
+    input.smallestFix ?? null,
+    ...db.provenanceValues()
   );
   return substrate(db, input.issueId);
 }
@@ -21728,9 +21790,9 @@ function recordPlanningReviewPass(db, input) {
     throw new DomainError("open_planning_blockers", `Approval is blocked by ${current.planning_review.open_blocking_count} open P0/P1 planning finding(s).`);
   }
   db.raw.prepare(`
-    INSERT INTO planning_review_passes (id, issue_id, pass_number, kind, verdict, summary)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(randomUUID(), input.issueId, input.passNumber, planningReviewKind(input.passNumber), input.verdict, input.summary);
+    INSERT INTO planning_review_passes (id, issue_id, pass_number, kind, verdict, summary, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, input.passNumber, planningReviewKind(input.passNumber), input.verdict, input.summary, ...db.provenanceValues());
   return substrate(db, input.issueId);
 }
 function recordPass(db, input) {
@@ -21763,9 +21825,9 @@ function recordPass(db, input) {
     throw new DomainError("review_complete", "Review is already complete; another pass would expand the review loop.");
   }
   db.raw.prepare(`
-    INSERT INTO review_passes (id, issue_id, pass_number, kind, verdict, summary)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(randomUUID(), input.issueId, input.passNumber, reviewKind(input.passNumber), input.verdict, input.summary);
+    INSERT INTO review_passes (id, issue_id, pass_number, kind, verdict, summary, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, input.passNumber, reviewKind(input.passNumber), input.verdict, input.summary, ...db.provenanceValues());
   return substrate(db, input.issueId);
 }
 function upsertFinding(db, input) {
@@ -21796,8 +21858,9 @@ function upsertFinding(db, input) {
   db.raw.prepare(`
     INSERT INTO findings (
       id, issue_id, review_pass_id, behavior_id, severity, status, title,
-      blocker_reachability, blocker_impact, blocker_rollback, smallest_fix
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      blocker_reachability, blocker_impact, blocker_rollback, smallest_fix,
+      trigger_type, triggered_by, trigger_data
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       review_pass_id = COALESCE(excluded.review_pass_id, findings.review_pass_id),
       behavior_id = COALESCE(excluded.behavior_id, findings.behavior_id),
@@ -21807,7 +21870,8 @@ function upsertFinding(db, input) {
       blocker_reachability = COALESCE(excluded.blocker_reachability, findings.blocker_reachability),
       blocker_impact = COALESCE(excluded.blocker_impact, findings.blocker_impact),
       blocker_rollback = COALESCE(excluded.blocker_rollback, findings.blocker_rollback),
-      smallest_fix = COALESCE(excluded.smallest_fix, findings.smallest_fix)
+      smallest_fix = COALESCE(excluded.smallest_fix, findings.smallest_fix),
+      trigger_type = excluded.trigger_type, triggered_by = excluded.triggered_by, trigger_data = excluded.trigger_data
   `).run(
     input.findingId,
     input.issueId,
@@ -21819,7 +21883,8 @@ function upsertFinding(db, input) {
     input.reachability ?? null,
     input.impact ?? null,
     input.rollback ?? null,
-    input.smallestFix ?? null
+    input.smallestFix ?? null,
+    ...db.provenanceValues()
   );
   return substrate(db, input.issueId);
 }
@@ -21829,9 +21894,9 @@ function recordEvidence(db, input) {
     throw new DomainError("behavior_not_found", `Behavior ${input.behaviorId} is not a child of ${input.issueId}.`);
   }
   db.raw.prepare(`
-    INSERT INTO evidence (id, issue_id, behavior_id, tier, verdict, summary, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(randomUUID(), input.issueId, input.behaviorId ?? null, input.tier, input.verdict, input.summary, input.source ?? "");
+    INSERT INTO evidence (id, issue_id, behavior_id, tier, verdict, summary, source, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, input.behaviorId ?? null, input.tier, input.verdict, input.summary, input.source ?? "", ...db.provenanceValues());
   return substrate(db, input.issueId);
 }
 function verifyBehavior(db, behaviorId, evidenceId) {
@@ -21851,7 +21916,9 @@ function verifyBehavior(db, behaviorId, evidenceId) {
       "Attach one passing wired or live capability proof; use lower-level tests as supporting fault injection."
     );
   }
-  db.raw.prepare("UPDATE behaviors SET status = 'verified' WHERE id = ?").run(behaviorId);
+  db.raw.prepare(
+    "UPDATE behaviors SET status = 'verified', trigger_type = ?, triggered_by = ?, trigger_data = ? WHERE id = ?"
+  ).run(...db.provenanceValues(), behaviorId);
   return substrate(db, behavior.issue_id);
 }
 function createWaiver(db, input) {
@@ -21860,11 +21927,15 @@ function createWaiver(db, input) {
   if (!behavior) throw new DomainError("behavior_not_found", `Behavior ${input.behaviorId} is not a child of ${input.issueId}.`);
   if (!behavior.enforced) throw new DomainError("waiver_not_needed", "Advisory behaviors do not require a waiver.");
   db.raw.prepare(`
-    INSERT INTO waivers (id, issue_id, behavior_id, rationale, approved_by)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(behavior_id) DO UPDATE SET rationale = excluded.rationale, approved_by = excluded.approved_by
-  `).run(randomUUID(), input.issueId, input.behaviorId, input.rationale, input.approvedBy);
-  db.raw.prepare("UPDATE behaviors SET status = 'waived' WHERE id = ?").run(input.behaviorId);
+    INSERT INTO waivers (id, issue_id, behavior_id, rationale, approved_by, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(behavior_id) DO UPDATE SET
+      rationale = excluded.rationale, approved_by = excluded.approved_by,
+      trigger_type = excluded.trigger_type, triggered_by = excluded.triggered_by, trigger_data = excluded.trigger_data
+  `).run(randomUUID(), input.issueId, input.behaviorId, input.rationale, input.approvedBy, ...db.provenanceValues());
+  db.raw.prepare(
+    "UPDATE behaviors SET status = 'waived', trigger_type = ?, triggered_by = ?, trigger_data = ? WHERE id = ?"
+  ).run(...db.provenanceValues(), input.behaviorId);
   return substrate(db, input.issueId);
 }
 
@@ -22420,7 +22491,7 @@ function planningSummary(health) {
   };
 }
 async function runMcp(dbPath) {
-  const db = openDb(dbPath);
+  const db = openDb(dbPath, { trigger_type: "mcp", triggered_by: "mcp-client", trigger_data: null });
   const server = new McpServer(
     { name: "loopbreaker", version: "0.4.0" },
     {
@@ -22754,6 +22825,7 @@ async function runMcp(dbPath) {
   );
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  db.setTriggeredBy(server.server.getClientVersion()?.name ?? "mcp-client");
 }
 
 // src/plugin-mcp.ts
