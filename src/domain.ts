@@ -770,3 +770,27 @@ export function demoteUnexecuted(db: LoopbreakerDb, options: { apply: boolean })
   });
   return { applied: true, demoted };
 }
+
+/**
+ * LB-27 — bind a behavior to a registered harness.
+ *
+ * Deliberately NOT subject to the contract freeze. The behavior contract states
+ * what must be true and how it is proven in prose (`trigger`/`expected`/
+ * `verify`); the harness ref only says which registered runner implements that
+ * prose. Changing the runner does not change the requirement, and freezing the
+ * ref would make an approved issue permanently unprovable — which is exactly
+ * where LB-21 ended up.
+ *
+ * The binding is not trusted on its own: `resolveHarnessFor` additionally
+ * requires the registry entry to name this behavior in its `proves` list, which
+ * is a reviewed code change. One half of the binding is cheap and revocable;
+ * the other half has to survive review.
+ */
+export function bindHarness(db: LoopbreakerDb, behaviorId: string, harnessRef: string): Substrate {
+  const behavior = db.raw.prepare("SELECT issue_id FROM behaviors WHERE id = ?").get(behaviorId) as { issue_id: string } | undefined;
+  if (!behavior) throw new DomainError("behavior_not_found", `Behavior ${behaviorId} does not exist.`);
+  db.raw.prepare(
+    "UPDATE behaviors SET harness_ref = ?, trigger_type = ?, triggered_by = ?, trigger_data = ? WHERE id = ?",
+  ).run(harnessRef, ...db.provenanceValues(), behaviorId);
+  return substrate(db, behavior.issue_id);
+}

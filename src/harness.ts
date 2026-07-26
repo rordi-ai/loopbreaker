@@ -25,6 +25,19 @@ export interface HarnessEntry {
   runner: "vitest-wired" | "script";
   /** Path to the test file or executable, resolved against the repository root. */
   target: string;
+  /**
+   * The behavior ids this harness CONSENTS to prove.
+   *
+   * Binding takes two independent acts: a behavior names a harness
+   * (`harness_ref`, a data change an agent can make) and the harness names the
+   * behavior back (this list, a code change that shows up in a diff). Without
+   * the second, an agent could bind any behavior to a trivially-passing entry
+   * and verify it — the registry would constrain *what can be named* but not
+   * *what a behavior names*.
+   *
+   * Fail-closed: an entry with no `proves` consents to nothing.
+   */
+  proves?: string[];
   purpose?: string;
   prerequisites?: string[];
 }
@@ -80,6 +93,22 @@ export function resolveHarness(registry: HarnessRegistry, id: string | null | un
       "harness_not_registered",
       `No harness registered under the id ${id}.`,
       `Add ${id} to ${registry.path}, or point the behavior at an existing entry.`,
+    );
+  }
+  return entry;
+}
+
+/**
+ * Resolve the harness for a behavior, requiring BOTH directions of the binding:
+ * the behavior names the harness, and the harness consents to that behavior.
+ */
+export function resolveHarnessFor(registry: HarnessRegistry, behaviorId: string, harnessRef: string | null | undefined): HarnessEntry {
+  const entry = resolveHarness(registry, harnessRef);
+  if (!entry.proves?.includes(behaviorId)) {
+    throw new DomainError(
+      "harness_does_not_prove_behavior",
+      `Harness ${entry.id} does not consent to prove ${behaviorId}.`,
+      `Add ${behaviorId} to the \`proves\` list of ${entry.id} in ${registry.path}. That is a reviewed code change by design: it is what stops a behavior being pointed at a harness that cannot fail for it.`,
     );
   }
   return entry;

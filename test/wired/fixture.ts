@@ -94,7 +94,7 @@ export async function driveAllWriters(workspace: Workspace): Promise<DrivenFixtu
   chmodSync(proofScript, 0o755);
   const fixtureRegistry = join(workspace.dir, "fixture-harnesses.json");
   writeFileSync(fixtureRegistry, JSON.stringify({
-    harnesses: [{ id: "fixture-wired", tier: "wired", runner: "script", target: proofScript, purpose: "Fixture wired proof." }],
+    harnesses: [{ id: "fixture-wired", tier: "wired", runner: "script", target: proofScript, purpose: "Fixture wired proof.", proves: [verifiedBehaviorId] }],
   }));
   await cliOk(["prove", verifiedBehaviorId, "--registry", fixtureRegistry], { db });
   const evidenceId = readDb(db, (handle) =>

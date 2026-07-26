@@ -10,7 +10,7 @@
 
 import type { LoopbreakerDb } from "./db.js";
 import { DomainError, recordEvidence } from "./domain.js";
-import { loadRegistry, resolveHarness, runDigest, runHarness, type HarnessEntry } from "./harness.js";
+import { loadRegistry, resolveHarnessFor, runDigest, runHarness, type HarnessEntry } from "./harness.js";
 import type { Substrate, Verdict } from "./types.js";
 
 export interface ProveResult {
@@ -34,7 +34,9 @@ export function proveBehavior(
   if (!behavior) throw new DomainError("behavior_not_found", `Behavior ${behaviorId} does not exist.`);
 
   const registry = loadRegistry(options.registryPath);
-  const harness = resolveHarness(registry, behavior.harness_ref);
+  // Both directions must agree: the behavior names the harness, and the
+  // harness consents to the behavior. See resolveHarnessFor.
+  const harness = resolveHarnessFor(registry, behavior.id, behavior.harness_ref);
   const run = runHarness(harness, { live: options.live, cwd: options.cwd });
 
   // The verdict is a function of the exit code alone. A harness that could not

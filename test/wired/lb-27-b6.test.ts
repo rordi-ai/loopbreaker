@@ -28,7 +28,7 @@ describe("LB-27-B6 · demote reports before it acts", () => {
     writeFileSync(script, "#!/bin/sh\nexit 0\n");
     chmodSync(script, 0o755);
     registry = scratchRegistry(workspace, [
-      { id: "scratch-ok", tier: "wired", runner: "script", target: script, purpose: "exits 0" },
+      { id: "scratch-ok", tier: "wired", runner: "script", target: script, purpose: "exits 0", proves: ["DEM-OK-B1", "DEM-BAD-B1"] },
     ]);
 
     // One behavior verified the honest way, one verified by assertion. The

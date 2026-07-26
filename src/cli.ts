@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { DomainError, demoteUnexecuted, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertPlanningFinding, verifyBehavior, createWaiver, importContract } from "./domain.js";
+import { DomainError, bindHarness, demoteUnexecuted, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertPlanningFinding, verifyBehavior, createWaiver, importContract } from "./domain.js";
 import { loadRegistry } from "./harness.js";
 import { proveBehavior } from "./prove.js";
 import { cliActor, openDb, type LoopbreakerDb } from "./db.js";
@@ -39,6 +39,7 @@ Usage:
   loopbreaker evidence ISSUE --behavior ID --tier T --verdict V --summary TEXT [--source URI]
   loopbreaker verify BEHAVIOR --evidence ID
   loopbreaker harnesses [--registry PATH]      List the registered verify harnesses
+  loopbreaker bind BEHAVIOR --harness ID       Point a behavior at a registered harness
   loopbreaker prove BEHAVIOR [--live]          Execute the behavior's registered harness and record the result
   loopbreaker demote --dry-run | --apply       Report or demote behaviors verified without an executed proof
   loopbreaker waive ISSUE --behavior ID --rationale TEXT --approved-by NAME
@@ -73,6 +74,7 @@ const COMMAND_HELP: Record<string, string> = {
   verify: "loopbreaker verify BEHAVIOR --evidence ID [--db PATH]\n\nVerify a behavior with passing evidence attached to that behavior.",
   waive: "loopbreaker waive ISSUE --behavior ID --rationale TEXT --approved-by NAME [--db PATH]\n\nCreate durable named debt for one enforced behavior.",
   harnesses: "loopbreaker harnesses [--registry PATH] [--db PATH]\n\nList every registered verify harness with its declared tier and runner. A behavior's harness_ref names an entry here; it never stores a command.",
+  bind: "loopbreaker bind BEHAVIOR --harness ID [--db PATH]\n\nPoint a behavior at a registered harness. Not frozen by the acceptance contract: the contract states what must be true, the ref only says which runner proves it. The registry entry must also name this behavior in its `proves` list, which is a reviewed code change.",
   prove: "loopbreaker prove BEHAVIOR [--live] [--registry PATH] [--db PATH]\n\nExecute the behavior's registered harness and record evidence whose verdict comes from the exit code. Rejects --verdict and --tier: the caller chooses which harness runs, never what the run concluded. A live-tier harness requires --live.",
   demote: "loopbreaker demote --dry-run | --apply [--db PATH]\n\nReport, or apply, the demotion of every enforced behavior that reached verified without a proof loopbreaker executed. --dry-run changes nothing and names the exact set --apply would demote.",
   serve: "loopbreaker serve [--db PATH] [--port 7331]\n\nServe the visual review graph on 127.0.0.1.",
@@ -504,6 +506,12 @@ async function main(): Promise<void> {
           id: entry.id, tier: entry.tier, runner: entry.runner, target: entry.target, purpose: entry.purpose ?? "",
         })),
       }, db, ["loopbreaker prove <behavior>"]);
+      return;
+    }
+    if (command === "bind") {
+      const behaviorId = positional[1];
+      if (!behaviorId) throw new DomainError("missing_behavior", "A behavior ID is required.");
+      output(bindHarness(db, behaviorId, required(flags, "harness")), db, [`loopbreaker prove ${behaviorId}`]);
       return;
     }
     if (command === "prove") {

@@ -30,7 +30,7 @@ describe("LB-27-B4 · asserted evidence cannot verify an enforced behavior", () 
     writeFileSync(script, "#!/bin/sh\nexit 0\n");
     chmodSync(script, 0o755);
     registry = scratchRegistry(workspace, [
-      { id: "scratch-ok", tier: "wired", runner: "script", target: script, purpose: "exits 0" },
+      { id: "scratch-ok", tier: "wired", runner: "script", target: script, purpose: "exits 0", proves: ["GATE-1-B1", "GATE-2-B1"] },
     ]);
   });
 
@@ -67,7 +67,7 @@ describe("LB-27-B4 · asserted evidence cannot verify an enforced behavior", () 
 
   it("never verifies on a not_run verdict", async () => {
     scratchRegistry(workspace, [
-      { id: "scratch-absent", tier: "wired", runner: "script", target: join(workspace.dir, "absent.sh"), purpose: "missing" },
+      { id: "scratch-absent", tier: "wired", runner: "script", target: join(workspace.dir, "absent.sh"), purpose: "missing", proves: ["GATE-3-B1"] },
     ]);
     await importOneBehavior(workspace, { issueId: "GATE-3", harnessRef: "scratch-absent" });
     await runCli(["prove", "GATE-3-B1", "--registry", join(workspace.dir, "harnesses.json")], { db: workspace.db });

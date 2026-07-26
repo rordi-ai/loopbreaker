@@ -6,11 +6,11 @@
  * pointing a behavior at one is a data change.
  */
 
-import { readFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ROOT, cliOk, makeWorkspace, requireBuild, runCli, type Workspace } from "./harness.js";
-import { importOneBehavior } from "./lb-27-fixture.js";
+import { importOneBehavior, scratchRegistry } from "./lb-27-fixture.js";
 
 describe("LB-27-B1 · harness_ref resolves through the registry", () => {
   let workspace: Workspace;
@@ -54,5 +54,40 @@ describe("LB-27-B1 · harness_ref resolves through the registry", () => {
     const result = await runCli(["prove", "REG-2-B1"], { db: workspace.db });
     expect(result.code, "proving a behavior with no harness must fail").not.toBe(0);
     expect(`${result.stdout}${result.stderr}`.toLowerCase()).toMatch(/harness/);
+  });
+
+  it("refuses a harness that does not consent to prove this behavior", async () => {
+    // The binding hole: `harness_ref` is a data change an agent can make, so
+    // without consent an agent could point any behavior at a harness that
+    // cannot fail — `exit 0` — and verify it. The registry entry must name the
+    // behavior back, which is a reviewed code change.
+    const script = join(workspace.dir, "always-passes.sh");
+    writeFileSync(script, "#!/bin/sh\nexit 0\n");
+    chmodSync(script, 0o755);
+    const registry = scratchRegistry(workspace, [
+      { id: "unconsenting", tier: "wired", runner: "script", target: script, purpose: "exits 0", proves: ["SOMEONE-ELSE-B1"] },
+    ]);
+    await importOneBehavior(workspace, { issueId: "REG-3", harnessRef: "unconsenting" });
+    const result = await runCli(["prove", "REG-3-B1", "--registry", registry], { db: workspace.db });
+    expect(result.code, "a non-consenting harness proved a behavior").not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`, "the refusal does not name the behavior").toContain("REG-3-B1");
+  });
+
+  it("binds a harness outside the frozen acceptance contract", async () => {
+    // A behavior's contract freezes on planning-review approval, but the harness
+    // ref is not part of that contract: it says which runner proves the `verify`
+    // prose, not what must be true. Freezing it would leave an approved issue
+    // permanently unprovable — exactly where LB-21 ended up.
+    const script = join(workspace.dir, "bindable.sh");
+    writeFileSync(script, "#!/bin/sh\nexit 0\n");
+    chmodSync(script, 0o755);
+    const registry = scratchRegistry(workspace, [
+      { id: "bindable", tier: "wired", runner: "script", target: script, purpose: "exits 0", proves: ["REG-4-B1"] },
+    ]);
+    await importOneBehavior(workspace, { issueId: "REG-4", harnessRef: undefined });
+    const bound = await runCli(["bind", "REG-4-B1", "--harness", "bindable"], { db: workspace.db });
+    expect(bound.code, `bind exited ${bound.code}: ${bound.stderr}`).toBe(0);
+    const proved = await runCli(["prove", "REG-4-B1", "--registry", registry], { db: workspace.db });
+    expect(proved.code, `prove after bind exited ${proved.code}: ${proved.stderr}`).toBe(0);
   });
 });

@@ -31,8 +31,8 @@ describe("LB-27-B2 · the verdict comes from the run", () => {
     const passing = writeScript(workspace, "passing.sh", 0);
     const failing = writeScript(workspace, "failing.sh", 1);
     scratchRegistry(workspace, [
-      { id: "scratch-pass", tier: "wired", runner: "script", target: passing, purpose: "exits 0" },
-      { id: "scratch-fail", tier: "wired", runner: "script", target: failing, purpose: "exits 1" },
+      { id: "scratch-pass", tier: "wired", runner: "script", target: passing, purpose: "exits 0", proves: ["PROVE-OK-B1"] },
+      { id: "scratch-fail", tier: "wired", runner: "script", target: failing, purpose: "exits 1", proves: ["PROVE-BAD-B1"] },
     ]);
 
     await importOneBehavior(workspace, { issueId: "PROVE-OK", harnessRef: "scratch-pass" });
@@ -73,7 +73,7 @@ describe("LB-27-B2 · the verdict comes from the run", () => {
 
   it("records `not_run` rather than a decided verdict when the harness cannot execute", async () => {
     scratchRegistry(workspace, [
-      { id: "scratch-missing", tier: "wired", runner: "script", target: join(workspace.dir, "does-not-exist.sh"), purpose: "absent" },
+      { id: "scratch-missing", tier: "wired", runner: "script", target: join(workspace.dir, "does-not-exist.sh"), purpose: "absent", proves: ["PROVE-MISSING-B1"] },
     ]);
     await importOneBehavior(workspace, { issueId: "PROVE-MISSING", harnessRef: "scratch-missing" });
     await runCli(["prove", "PROVE-MISSING-B1", "--registry", join(workspace.dir, "harnesses.json")], { db: workspace.db });

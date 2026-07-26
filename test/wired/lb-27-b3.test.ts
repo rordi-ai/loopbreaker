@@ -26,7 +26,7 @@ describe("LB-27-B3 · executed-ness and baseline state are recorded", () => {
     writeFileSync(script, "#!/bin/sh\nexit 0\n");
     chmodSync(script, 0o755);
     registry = scratchRegistry(workspace, [
-      { id: "scratch-ok", tier: "wired", runner: "script", target: script, purpose: "exits 0" },
+      { id: "scratch-ok", tier: "wired", runner: "script", target: script, purpose: "exits 0", proves: ["EXEC-1-B1", "EXEC-2-B1"] },
     ]);
 
     await importOneBehavior(workspace, { issueId: "EXEC-1", harnessRef: "scratch-ok" });

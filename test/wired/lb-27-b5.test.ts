@@ -25,8 +25,8 @@ describe("LB-27-B5 · tier is declared by the registry, not the caller", () => {
     writeFileSync(script, "#!/bin/sh\nexit 0\n");
     chmodSync(script, 0o755);
     registry = scratchRegistry(workspace, [
-      { id: "declared-unit", tier: "unit", runner: "script", target: script, purpose: "a unit-tier harness" },
-      { id: "declared-live", tier: "live", runner: "script", target: script, purpose: "a live-tier harness" },
+      { id: "declared-unit", tier: "unit", runner: "script", target: script, purpose: "a unit-tier harness", proves: ["TIER-1-B1"] },
+      { id: "declared-live", tier: "live", runner: "script", target: script, purpose: "a live-tier harness", proves: ["TIER-2-B1"] },
     ]);
   });
 

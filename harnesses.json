@@ -7,7 +7,10 @@
       "runner": "script",
       "target": "harnesses/demo-replay.sh",
       "purpose": "DEMO-1's wired replay proof, executed by the browser demo action.",
-      "prerequisites": []
+      "prerequisites": [],
+      "proves": [
+        "DEMO-B3"
+      ]
     },
     {
       "id": "lb-21-b1",
@@ -17,6 +20,9 @@
       "purpose": "All twelve write sites across the ten domain tables stamp the provenance triple.",
       "prerequisites": [
         "pnpm build"
+      ],
+      "proves": [
+        "LB-21-B1"
       ]
     },
     {
@@ -27,6 +33,9 @@
       "purpose": "trigger_type is exactly the ingress that opened the handle.",
       "prerequisites": [
         "pnpm build"
+      ],
+      "proves": [
+        "LB-21-B2"
       ]
     },
     {
@@ -37,6 +46,9 @@
       "purpose": "triggered_by and trigger_data resolve to their defined values.",
       "prerequisites": [
         "pnpm build"
+      ],
+      "proves": [
+        "LB-21-B3"
       ]
     },
     {
@@ -47,6 +59,9 @@
       "purpose": "No mutation path bypasses provenance.",
       "prerequisites": [
         "pnpm build"
+      ],
+      "proves": [
+        "LB-21-B4"
       ]
     },
     {
@@ -57,6 +72,9 @@
       "purpose": "substrate() exposes the provenance triple per record type over CLI and MCP.",
       "prerequisites": [
         "pnpm build"
+      ],
+      "proves": [
+        "LB-21-B5"
       ]
     },
     {
@@ -67,6 +85,9 @@
       "purpose": "The HTTP substrate carries provenance and the graph renders it in node footers.",
       "prerequisites": [
         "pnpm build"
+      ],
+      "proves": [
+        "LB-21-B6"
       ]
     }
   ]
