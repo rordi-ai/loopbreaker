@@ -122,3 +122,51 @@ until it passes is the failure mode this phase exists to prevent.
 The raw-write regex matched the *comment* left behind describing the removed `server.ts` write. The
 scan was flagging its own documentation. Fixed by skipping comment lines — worth recording, because
 a harness that reports a violation it invented is as dishonest as one that misses a real one.
+
+---
+
+# LB-27 red baseline
+
+Recorded **2026-07-25** against **`09e7523`**, before any LB-27 code was written.
+
+```sh
+pnpm test:wired -- test/wired/lb-27-*.test.ts
+```
+
+**24 failed · 2 passed · 0 skipped (26 assertions across 6 harnesses)**
+
+The two passes are genuine preconditions: `harnesses.json` exists and every entry declares a valid
+tier, runner and target. Everything else fails because `prove`, `demote`, `harnesses`, the
+`executed` / `exit_code` / `harness_id` / `baselined` columns, and the not-executed verify gate do
+not exist yet.
+
+## Design, from the stage-zero interview (ben@rordi.ai, 2026-07-25)
+
+| Decision | Answer |
+|---|---|
+| What `harness_ref` points at | A **registry entry id** in `harnesses.json`, never a command. The registry declares id, tier, runner, target and prerequisites. Adding a harness is a reviewable code change; pointing a behavior at one is a data change. Live-tier entries require an explicit opt-in. Modelled on rordi's `scripts/verify/INDEX.md`. |
+| Red-baseline enforcement | **Warn but record.** A pass with no recorded red baseline is flagged `baselined: 0` in the read model rather than refused — refusing would strand every behavior whose code already exists, since a red baseline cannot be observed retroactively. |
+| Demote | **Dry-run first, apply on command.** `demote --dry-run` names exactly what would lose verified status and changes nothing; `--apply` applies that set and is idempotent. |
+
+The exec-surface decision was a correction to an earlier proposal of mine that would have locked
+`harness_ref` to a vitest file under `test/wired/`. That would have made the **live tier
+unreachable** — a live proof drives a real browser or a deployed target and cannot be a unit-runner
+invocation. Loopbreaker has three tiers; the proposal served two.
+
+## Six vacuous assertions, found and removed
+
+The first run reported 13 failed / 8 passed. Six of those eight passes were **vacuous** — they
+passed *because nothing existed*, not because anything held:
+
+- `if (evidence.length > 0) { ... }` — no evidence, so the block never ran and the test passed.
+- `Number(row?.executed ?? 0)` — no column, so the default supplied the expected value.
+- "a caller-supplied `--tier` never reached the row" — trivially true against an empty table.
+- "the dry run does not name `DEM-OK-B1`" — trivially true of an error payload.
+
+Each was replaced with an explicit precondition that fails loudly when the substrate is empty. This
+is exactly the defect the red baseline exists to catch, written into these harnesses by their own
+author within an hour of documenting it. The discipline caught it; unexamined green would not have.
+
+Five further tests were **skipped** rather than failed, because B6's `beforeAll` threw on the absent
+`prove` command. A skipped test is not a recorded red — it is an absence of evidence in either
+direction — so the setup was made tolerant so every assertion runs and fails on its own merits.

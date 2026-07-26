@@ -1,0 +1,53 @@
+{
+  "$comment": "LB-27 harness registry. A behavior's harness_ref names an id here; it never stores a command. Adding a harness is a reviewable code change (a real file in the diff); pointing a behavior at one is a data change. `tier` is read from this file, which is what makes evidence tier honest rather than caller-declared. Modelled on rordi's scripts/verify/INDEX.md.",
+  "harnesses": [
+    {
+      "id": "lb-21-b1",
+      "tier": "wired",
+      "runner": "vitest-wired",
+      "target": "test/wired/lb-21-b1.test.ts",
+      "purpose": "All twelve write sites across the ten domain tables stamp the provenance triple.",
+      "prerequisites": ["pnpm build"]
+    },
+    {
+      "id": "lb-21-b2",
+      "tier": "wired",
+      "runner": "vitest-wired",
+      "target": "test/wired/lb-21-b2.test.ts",
+      "purpose": "trigger_type is exactly the ingress that opened the handle.",
+      "prerequisites": ["pnpm build"]
+    },
+    {
+      "id": "lb-21-b3",
+      "tier": "wired",
+      "runner": "vitest-wired",
+      "target": "test/wired/lb-21-b3.test.ts",
+      "purpose": "triggered_by and trigger_data resolve to their defined values.",
+      "prerequisites": ["pnpm build"]
+    },
+    {
+      "id": "lb-21-b4",
+      "tier": "wired",
+      "runner": "vitest-wired",
+      "target": "test/wired/lb-21-b4.test.ts",
+      "purpose": "No mutation path bypasses provenance.",
+      "prerequisites": ["pnpm build"]
+    },
+    {
+      "id": "lb-21-b5",
+      "tier": "wired",
+      "runner": "vitest-wired",
+      "target": "test/wired/lb-21-b5.test.ts",
+      "purpose": "substrate() exposes the provenance triple per record type over CLI and MCP.",
+      "prerequisites": ["pnpm build"]
+    },
+    {
+      "id": "lb-21-b6",
+      "tier": "wired",
+      "runner": "vitest-wired",
+      "target": "test/wired/lb-21-b6.test.ts",
+      "purpose": "The HTTP substrate carries provenance and the graph renders it in node footers.",
+      "prerequisites": ["pnpm build"]
+    }
+  ]
+}
