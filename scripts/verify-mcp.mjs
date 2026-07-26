@@ -44,6 +44,30 @@ try {
   const healthResult = await client.callTool({ name: "planning_health", arguments: { issue_id: "MCP-PLAN" } });
   const healthText = healthResult.content.find((item) => item.type === "text")?.text ?? "";
   if (!healthText.includes("score:") || !healthText.includes("dimensions[5]")) throw new Error("MCP planning_health did not return five scored dimensions.");
+  // LB-28: discovery is the first ordered authority, so the shape gate stays
+  // shut until an approved premise exists. The agent-facing surface can RECORD
+  // the interview, but approval is deliberately absent from MCP — it is the one
+  // act an agent must not issue on its own behalf — so it goes through the CLI.
+  const discoveryFields = ["problem", "appetite", "smallest_slice", "non_goals", "success_signal", "reversibility", "decision_owner", "risks"];
+  await client.callTool({
+    name: "discovery_record",
+    arguments: {
+      issue_id: "MCP-PLAN",
+      answers: discoveryFields.map((field) => ({
+        field,
+        question: `What is the ${field}?`,
+        answer: `Verifier-supplied answer for ${field}.`,
+      })),
+    },
+  });
+  const draft = await client.callTool({ name: "discovery_state", arguments: { issue_id: "MCP-PLAN" } });
+  const draftText = draft.content.find((item) => item.type === "text")?.text ?? "";
+  if (!draftText.includes("status: draft")) throw new Error("MCP discovery_record did not leave the record a draft.");
+  if (tools.tools.some((tool) => tool.name.includes("discovery") && tool.name.includes("approve"))) {
+    throw new Error("MCP exposes a discovery approval tool; approval must not be agent-issuable.");
+  }
+  execFileSync(process.execPath, [cli, "discover", "MCP-PLAN", "--approve", "--by", "verifier", "--db", db], { cwd: root, stdio: "ignore" });
+
   const shape = await client.callTool({ name: "shape_record", arguments: { issue_id: "MCP-PLAN", shape: {
     problem: "Agents need exact readiness.", appetite: "One fixture.", smallest_slice: "Expose the ordered gate.",
     non_goals: ["Implementation"], success_signal: "The active gate is exact.", reversibility: "Delete the fixture.",

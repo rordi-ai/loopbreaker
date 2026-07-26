@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { DomainError, bindHarness, demoteUnexecuted, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertPlanningFinding, verifyBehavior, createWaiver, importContract } from "./domain.js";
+import { DomainError, approveDiscovery, bindHarness, demoteUnexecuted, discoveryState, recordDiscovery, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertPlanningFinding, verifyBehavior, createWaiver, importContract } from "./domain.js";
 import { loadRegistry } from "./harness.js";
 import { proveBehavior } from "./prove.js";
 import { cliActor, openDb, type LoopbreakerDb } from "./db.js";
@@ -38,6 +38,9 @@ Usage:
   loopbreaker pass ISSUE --pass N --verdict V --summary TEXT
   loopbreaker evidence ISSUE --behavior ID --tier T --verdict V --summary TEXT [--source URI]
   loopbreaker verify BEHAVIOR --evidence ID
+  loopbreaker discover ISSUE FILE              Record the founder interview answers
+  loopbreaker discover ISSUE --approve --by N  Approve the discovery record
+  loopbreaker discovery ISSUE                  Show the discovery record and its status
   loopbreaker harnesses [--registry PATH]      List the registered verify harnesses
   loopbreaker bind BEHAVIOR --harness ID       Point a behavior at a registered harness
   loopbreaker prove BEHAVIOR [--live]          Execute the behavior's registered harness and record the result
@@ -73,6 +76,8 @@ const COMMAND_HELP: Record<string, string> = {
   evidence: "loopbreaker evidence ISSUE [--behavior ID] --tier unit|wired|live --verdict pass|fail --summary TEXT [--source URI] [--db PATH]",
   verify: "loopbreaker verify BEHAVIOR --evidence ID [--db PATH]\n\nVerify a behavior with passing evidence attached to that behavior.",
   waive: "loopbreaker waive ISSUE --behavior ID --rationale TEXT --approved-by NAME [--db PATH]\n\nCreate durable named debt for one enforced behavior.",
+  discover: "loopbreaker discover ISSUE FILE [--db PATH]\nloopbreaker discover ISSUE --approve --by NAME [--db PATH]\n\nRecord the founder interview as one answer per required shape field, then approve it. Shape cannot reach proceed without an approved record. Re-recording answers returns the record to draft: an approved premise silently edited would have the gate vouch for text the approver never saw.",
+  discovery: "loopbreaker discovery ISSUE [--db PATH]\n\nShow the discovery record, its answers, and whether it is approved, grandfathered, or still a draft.",
   harnesses: "loopbreaker harnesses [--registry PATH] [--db PATH]\n\nList every registered verify harness with its declared tier and runner. A behavior's harness_ref names an entry here; it never stores a command.",
   bind: "loopbreaker bind BEHAVIOR --harness ID [--db PATH]\n\nPoint a behavior at a registered harness. Not frozen by the acceptance contract: the contract states what must be true, the ref only says which runner proves it. The registry entry must also name this behavior in its `proves` list, which is a reviewed code change.",
   prove: "loopbreaker prove BEHAVIOR [--live] [--registry PATH] [--db PATH]\n\nExecute the behavior's registered harness and record evidence whose verdict comes from the exit code. Rejects --verdict and --tier: the caller chooses which harness runs, never what the run concluded. A live-tier harness requires --live.",
@@ -498,6 +503,40 @@ async function main(): Promise<void> {
       output(verifyBehavior(db, behaviorId, required(flags, "evidence")), db);
       return;
     }
+    if (command === "discovery") {
+      const issueId = positional[1];
+      if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
+      output(discoveryState(db, issueId), db, ["loopbreaker readiness " + issueId]);
+      return;
+    }
+    if (command === "discover") {
+      const issueId = positional[1];
+      if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
+      if (flags.approve === true) {
+        const by = flags.by;
+        if (typeof by !== "string" || !by.trim()) {
+          throw new DomainError("missing_flag", "--by is required: an approver must be named.", "The approval is the one act that must carry a human's name.");
+        }
+        output(approveDiscovery(db, issueId, by), db, ["loopbreaker readiness " + issueId]);
+        return;
+      }
+      const file = positional[2];
+      if (!file) throw new DomainError("missing_file", "A discovery JSON file is required.");
+      let parsed: unknown;
+      try { parsed = JSON.parse(readFileSync(resolve(file), "utf8")); }
+      catch (error) { throw new DomainError("invalid_discovery_file", `Could not read ${file}: ${(error as Error).message}`); }
+      const record = parsed as { answers?: unknown };
+      if (!Array.isArray(record.answers)) throw new DomainError("invalid_discovery", "Discovery JSON requires an answers array.");
+      const answers = record.answers.map((item) => {
+        const entry = item as { field?: unknown; question?: unknown; answer?: unknown };
+        if (typeof entry.field !== "string" || typeof entry.question !== "string" || typeof entry.answer !== "string") {
+          throw new DomainError("invalid_discovery", "Each answer requires string field, question, and answer.");
+        }
+        return { field: entry.field, question: entry.question, answer: entry.answer };
+      });
+      output(recordDiscovery(db, issueId, answers), db, [`loopbreaker discover ${issueId} --approve --by NAME`]);
+      return;
+    }
     if (command === "harnesses") {
       const registry = loadRegistry(typeof flags.registry === "string" ? flags.registry : undefined);
       output({
@@ -592,6 +631,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   main().catch((error) => {
     const known = error instanceof DomainError;
     process.stdout.write(`${failure(known ? error.code : "internal_error", error instanceof Error ? error.message : String(error), known ? error.hint : undefined)}\n`);
-    process.exitCode = known && ["missing_flag", "missing_issue", "missing_behavior", "missing_file", "invalid_value", "unknown_command", "invalid_port", "invalid_contract_file", "invalid_contract", "invalid_plan_file", "invalid_plan", "invalid_shape_file", "invalid_shape", "no_active_issue", "outcome_not_caller_supplied", "harness_ref_missing", "harness_not_registered", "registry_missing", "registry_invalid", "registry_unreadable", "live_opt_in_required"].includes(error.code) ? 2 : 1;
+    process.exitCode = known && ["missing_flag", "missing_issue", "missing_behavior", "missing_file", "invalid_value", "unknown_command", "invalid_port", "invalid_contract_file", "invalid_contract", "invalid_plan_file", "invalid_plan", "invalid_shape_file", "invalid_shape", "no_active_issue", "invalid_discovery_file", "invalid_discovery", "incomplete_discovery", "missing_discovery", "discovery_grandfathered", "outcome_not_caller_supplied", "harness_ref_missing", "harness_not_registered", "registry_missing", "registry_invalid", "registry_unreadable", "live_opt_in_required"].includes(error.code) ? 2 : 1;
   });
 }

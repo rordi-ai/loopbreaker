@@ -73,6 +73,33 @@ export function seedDemo(db: LoopbreakerDb) {
       disposition: "proceed",
     });
 
+    // LB-28 — the demo carries an approved discovery record. DEMO-1 is a
+    // synthetic incident, so its premise gets a stated human origin rather than
+    // a grandfather exemption: the demo should show the stage, not skip it.
+    const discovery = db.raw.prepare(`
+      INSERT INTO discovery_answers (issue_id, field, question, answer, trigger_type, triggered_by, trigger_data)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(issue_id, field) DO NOTHING
+    `);
+    const demoDiscovery: Array<[string, string, string]> = [
+      ["problem", "What breaks today, and for whom?", "A warm follow-up can be accepted twice, so the external effect fires more than once."],
+      ["appetite", "How much is this worth?", "One bounded exact-once repair slice."],
+      ["smallest_slice", "What is the smallest slice that settles it?", "Persist acceptance and carry one idempotency key through the wired SDK boundary."],
+      ["non_goals", "What are we explicitly not doing?", "Redesigning the external SDK."],
+      ["success_signal", "How will we know it worked?", "A wired redelivery creates exactly one external effect."],
+      ["reversibility", "How do we back out?", "Disable warm reuse and return to the cold path."],
+      ["decision_owner", "Who decides?", "The demo operator."],
+      ["risks", "What could go wrong?", "The SDK may ignore idempotency; the cold-path rollback is retained."],
+    ];
+    for (const [field, question, answer] of demoDiscovery) {
+      discovery.run(DEMO_ISSUE, field, question, answer, ...provenance);
+    }
+    db.raw.prepare(`
+      INSERT INTO discovery_records (issue_id, status, approved_by, approved_at, trigger_type, triggered_by, trigger_data)
+      VALUES (?, 'approved', 'demo-operator', CURRENT_TIMESTAMP, ?, ?, ?)
+      ON CONFLICT(issue_id) DO NOTHING
+    `).run(DEMO_ISSUE, ...provenance);
+
     db.raw.prepare(`
       INSERT INTO planning_review_passes (id, issue_id, pass_number, kind, verdict, summary, trigger_type, triggered_by, trigger_data)
       VALUES (?, ?, 1, 'comprehensive', 'approved', ?, ?, ?, ?)

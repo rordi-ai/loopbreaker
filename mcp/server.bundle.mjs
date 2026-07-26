@@ -21163,6 +21163,9 @@ var LoopbreakerDb = class {
     this.raw.close();
   }
   migrate() {
+    const introducingDiscovery = !this.raw.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'discovery_records'"
+    ).get();
     this.raw.exec(`
       CREATE TABLE IF NOT EXISTS issues (
         id TEXT PRIMARY KEY,
@@ -21268,6 +21271,29 @@ var LoopbreakerDb = class {
         smallest_fix TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS discovery_records (
+        issue_id TEXT PRIMARY KEY REFERENCES issues(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft', 'approved', 'grandfathered')),
+        approved_by TEXT,
+        approved_at TEXT,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        trigger_type TEXT,
+        triggered_by TEXT,
+        trigger_data TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS discovery_answers (
+        issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        field TEXT NOT NULL,
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        trigger_type TEXT,
+        triggered_by TEXT,
+        trigger_data TEXT,
+        PRIMARY KEY (issue_id, field)
+      );
+
       CREATE TABLE IF NOT EXISTS workspace (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         active_issue TEXT REFERENCES issues(id) ON DELETE SET NULL
@@ -21297,6 +21323,14 @@ var LoopbreakerDb = class {
       ["baselined", "INTEGER NOT NULL DEFAULT 0"]
     ]) {
       if (!evidenceColumns.has(column)) this.raw.exec(`ALTER TABLE evidence ADD COLUMN ${column} ${ddl}`);
+    }
+    if (introducingDiscovery) {
+      this.raw.exec(`
+        INSERT INTO discovery_records (issue_id, status)
+        SELECT s.issue_id, 'grandfathered'
+        FROM shape_assessments s
+        WHERE NOT EXISTS (SELECT 1 FROM discovery_records d WHERE d.issue_id = s.issue_id)
+      `);
     }
     const evidenceDdl = this.raw.prepare(
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'evidence'"
@@ -21482,6 +21516,12 @@ function shapeState(db, issueId) {
   if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
   const profile = db.shapeProfile(issueId);
   const blockers = [];
+  const discovery = discoveryState(db, issueId);
+  if (discovery.status === "missing") {
+    blockers.push({ code: "missing_discovery", message: "No discovery record exists; the premise has no human behind it." });
+  } else if (discovery.status === "draft") {
+    blockers.push({ code: "unapproved_discovery", message: "The discovery record is still a draft and has not been approved." });
+  }
   if (!profile) blockers.push({ code: "missing_shape", message: "No explicit shape decision is recorded." });
   if (profile) {
     const required2 = [profile.problem, profile.appetite, profile.smallest_slice, profile.success_signal, profile.reversibility, profile.decision_owner];
@@ -21614,7 +21654,20 @@ function substrate(db, issueId) {
   const resolved = new Set([...verified, ...waived].map((behavior) => behavior.id));
   const unresolved = enforced.filter((behavior) => !resolved.has(behavior.id));
   let shipping;
-  if (!shape.ready) {
+  const discovery = discoveryState(db, issueId);
+  if (!discovery.satisfied) {
+    shipping = {
+      disposition: "hold",
+      ready: false,
+      reason: discovery.status === "missing" ? "No discovery record exists; the premise has no human behind it." : "The discovery record is still a draft and has not been approved.",
+      enforced_total: enforced.length,
+      verified_total: verified.length,
+      waived_total: waived.length,
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      gate: "discovery",
+      planning_score: planning.score
+    };
+  } else if (!shape.ready) {
     shipping = {
       disposition: "hold",
       ready: false,
@@ -22024,6 +22077,70 @@ function createWaiver(db, input) {
   ).run(...db.provenanceValues(), input.behaviorId);
   return substrate(db, input.issueId);
 }
+var DISCOVERY_FIELDS = [
+  "problem",
+  "appetite",
+  "smallest_slice",
+  "non_goals",
+  "success_signal",
+  "reversibility",
+  "decision_owner",
+  "risks"
+];
+function discoveryState(db, issueId) {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`);
+  const record2 = db.raw.prepare(
+    "SELECT status, approved_by, approved_at FROM discovery_records WHERE issue_id = ?"
+  ).get(issueId);
+  const answers = db.raw.prepare(
+    "SELECT field, question, answer FROM discovery_answers WHERE issue_id = ? ORDER BY rowid"
+  ).all(issueId);
+  const status = record2?.status ?? "missing";
+  return {
+    issue_id: issueId,
+    status,
+    approved_by: record2?.approved_by ?? null,
+    approved_at: record2?.approved_at ?? null,
+    answers,
+    satisfied: status === "approved" || status === "grandfathered"
+  };
+}
+function recordDiscovery(db, issueId, answers) {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`);
+  const supplied = new Map(answers.map((entry) => [entry.field, entry]));
+  const missing = DISCOVERY_FIELDS.filter((field) => {
+    const entry = supplied.get(field);
+    return !entry || !present(entry.question) || !present(entry.answer);
+  });
+  if (missing.length > 0) {
+    throw new DomainError(
+      "incomplete_discovery",
+      `The discovery record leaves required shape fields unanswered: ${missing.join(", ")}.`,
+      "Every required shape field needs a question and a founder answer. Interview for what is missing; do not invent it."
+    );
+  }
+  const provenance = db.provenanceValues();
+  db.transaction(() => {
+    db.raw.prepare("DELETE FROM discovery_answers WHERE issue_id = ?").run(issueId);
+    const statement = db.raw.prepare(`
+      INSERT INTO discovery_answers (issue_id, field, question, answer, trigger_type, triggered_by, trigger_data)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const field of DISCOVERY_FIELDS) {
+      const entry = supplied.get(field);
+      statement.run(issueId, field, entry.question, entry.answer, ...provenance);
+    }
+    db.raw.prepare(`
+      INSERT INTO discovery_records (issue_id, status, approved_by, approved_at, trigger_type, triggered_by, trigger_data)
+      VALUES (?, 'draft', NULL, NULL, ?, ?, ?)
+      ON CONFLICT(issue_id) DO UPDATE SET
+        status = 'draft', approved_by = NULL, approved_at = NULL,
+        updated_at = CURRENT_TIMESTAMP,
+        trigger_type = excluded.trigger_type, triggered_by = excluded.triggered_by, trigger_data = excluded.trigger_data
+    `).run(issueId, ...provenance);
+  });
+  return discoveryState(db, issueId);
+}
 
 // src/prime.ts
 function resolveIssue(db, explicit) {
@@ -22040,6 +22157,8 @@ function resolveIssue(db, explicit) {
 }
 function nextActionFor(gate, planningReviewNextAction) {
   switch (gate) {
+    case "discovery":
+      return "interview the founder and get the discovery record approved";
     case "shape":
       return "record shape proceed";
     case "planning":
@@ -22646,6 +22765,41 @@ async function runMcp(dbPath) {
     async ({ issue_id, planning }) => {
       try {
         return content(planningSummary(recordPlanning(db, issue_id, planning)), db.path);
+      } catch (error2) {
+        return toolError(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "discovery_record",
+    {
+      description: "Record the founder interview as one answer per required shape field (problem, appetite, smallest_slice, non_goals, success_signal, reversibility, decision_owner, risks). Transcribe answers a human actually gave; never invent them. Recording leaves the record a DRAFT \u2014 approval is deliberately not available over MCP.",
+      inputSchema: {
+        issue_id: external_exports.string().min(1),
+        answers: external_exports.array(external_exports.object({
+          field: external_exports.string().min(1),
+          question: external_exports.string().min(1),
+          answer: external_exports.string().min(1)
+        })).min(1)
+      }
+    },
+    async (input) => {
+      try {
+        return content(recordDiscovery(db, input.issue_id, input.answers), db.path);
+      } catch (error2) {
+        return toolError(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "discovery_state",
+    {
+      description: "Read an issue's discovery record: its answers and whether it is approved, grandfathered, or still a draft. Shape cannot reach proceed until it is approved.",
+      inputSchema: { issue_id: external_exports.string().min(1) }
+    },
+    async (input) => {
+      try {
+        return content(discoveryState(db, input.issue_id), db.path);
       } catch (error2) {
         return toolError(error2);
       }

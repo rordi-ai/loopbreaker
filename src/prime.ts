@@ -48,6 +48,7 @@ export function resolveIssue(db: LoopbreakerDb, explicit?: string): string {
 
 function nextActionFor(gate: ShipState["gate"], planningReviewNextAction: string): string {
   switch (gate) {
+    case "discovery": return "interview the founder and get the discovery record approved";
     case "shape": return "record shape proceed";
     case "planning": return "reach planning health ready";
     case "planning_review": return planningReviewNextAction;

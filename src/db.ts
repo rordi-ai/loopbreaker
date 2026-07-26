@@ -85,6 +85,13 @@ export class LoopbreakerDb {
   }
 
   migrate(): void {
+    // LB-28 — is this the migration that INTRODUCES the discovery gate? Decided
+    // before the CREATE TABLE below, because the grandfather sweep must run
+    // exactly once. Running it on every open would silently exempt every issue
+    // shaped after the gate arrived, which is the opposite of the intent.
+    const introducingDiscovery = !this.raw.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'discovery_records'",
+    ).get();
     this.raw.exec(`
       CREATE TABLE IF NOT EXISTS issues (
         id TEXT PRIMARY KEY,
@@ -190,6 +197,29 @@ export class LoopbreakerDb {
         smallest_fix TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS discovery_records (
+        issue_id TEXT PRIMARY KEY REFERENCES issues(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft', 'approved', 'grandfathered')),
+        approved_by TEXT,
+        approved_at TEXT,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        trigger_type TEXT,
+        triggered_by TEXT,
+        trigger_data TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS discovery_answers (
+        issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        field TEXT NOT NULL,
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        trigger_type TEXT,
+        triggered_by TEXT,
+        trigger_data TEXT,
+        PRIMARY KEY (issue_id, field)
+      );
+
       CREATE TABLE IF NOT EXISTS workspace (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         active_issue TEXT REFERENCES issues(id) ON DELETE SET NULL
@@ -224,6 +254,19 @@ export class LoopbreakerDb {
       ["baselined", "INTEGER NOT NULL DEFAULT 0"],
     ] as const) {
       if (!evidenceColumns.has(column)) this.raw.exec(`ALTER TABLE evidence ADD COLUMN ${column} ${ddl}`);
+    }
+
+    // LB-28 — grandfather every issue that was ALREADY shaped at the moment the
+    // gate arrived. Recorded as data rather than derived from a date comparison,
+    // so who was exempted is inspectable instead of implicit. Guarded to the
+    // introducing migration: an issue shaped afterwards must face the gate.
+    if (introducingDiscovery) {
+      this.raw.exec(`
+        INSERT INTO discovery_records (issue_id, status)
+        SELECT s.issue_id, 'grandfathered'
+        FROM shape_assessments s
+        WHERE NOT EXISTS (SELECT 1 FROM discovery_records d WHERE d.issue_id = s.issue_id)
+      `);
     }
 
     // LB-27 — widen the evidence verdict CHECK to admit `not_run`. SQLite cannot

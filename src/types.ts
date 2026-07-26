@@ -241,7 +241,7 @@ export interface ShipState {
   verified_total: number;
   waived_total: number;
   unresolved_behavior_ids: string[];
-  gate: "shape" | "planning" | "planning_review" | "verification" | "ready";
+  gate: "discovery" | "shape" | "planning" | "planning_review" | "verification" | "ready";
   planning_score: number;
 }
 

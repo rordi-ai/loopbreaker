@@ -3,9 +3,28 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { LoopbreakerDb } from "../src/db.js";
-import { createWaiver, DomainError, importContract, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertFinding, upsertPlanningFinding, verifyBehavior } from "../src/domain.js";
+import { createWaiver, DomainError, importContract, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertFinding, upsertPlanningFinding, verifyBehavior, DISCOVERY_FIELDS, approveDiscovery, recordDiscovery } from "../src/domain.js";
 import type { PlanningProfile, ShapeProfile } from "../src/types.js";
 import { DEMO_ISSUE, seedDemo } from "../src/seed.js";
+
+/**
+ * LB-28 — satisfy the discovery gate for a fixture issue.
+ *
+ * Discovery is the first ordered authority, so any test that drives an issue
+ * past shape needs an approved premise. These tests cover DOWNSTREAM stages and
+ * use shape as scaffolding; the gate itself is covered by the LB-28 wired
+ * harnesses. Recording it explicitly keeps that dependency visible rather than
+ * quietly exempting the suite.
+ */
+function satisfyDiscovery(db: LoopbreakerDb, issueId: string): void {
+  recordDiscovery(db, issueId, DISCOVERY_FIELDS.map((field) => ({
+    field,
+    question: `What is the ${field}?`,
+    answer: `Fixture answer for ${field}.`,
+  })));
+  approveDiscovery(db, issueId, "fixture-founder");
+}
+
 
 const databases: LoopbreakerDb[] = [];
 
@@ -41,6 +60,7 @@ function healthyShape(disposition: ShapeProfile["disposition"] = "proceed"): Sha
 }
 
 function admitImplementation(db: LoopbreakerDb, issueId: string): void {
+  satisfyDiscovery(db, issueId);
   recordShape(db, issueId, healthyShape());
   recordPlanningReviewPass(db, { issueId, passNumber: 1, verdict: "approved", summary: "Shape and plan cohere." });
 }
@@ -222,6 +242,7 @@ describe("bounded review and shipping authority", () => {
       behaviors: [{ id: "PLAN-B2", title: "Do it", trigger: "A request arrives.", expected: "It completes.", verify: "Exercise the wired request." }],
     });
     expect(() => recordPass(db, { issueId: "PLAN-2", passNumber: 1, verdict: "pass", summary: "Looks good." })).toThrowError(/shape disposition/i);
+    satisfyDiscovery(db, "PLAN-2");
     recordShape(db, "PLAN-2", healthyShape());
     expect(() => recordPass(db, { issueId: "PLAN-2", passNumber: 1, verdict: "pass", summary: "Looks good." })).toThrowError(/planning health/i);
     const evidence = recordEvidence(db, { issueId: "PLAN-2", behaviorId: "PLAN-B2", tier: "wired", verdict: "pass", summary: "Wired proof.", executed: true, harnessId: "fixture" }).evidence.at(-1)!;
@@ -263,7 +284,9 @@ describe("bounded review and shipping authority", () => {
     });
     expect(state.planning).toMatchObject({ score: 95, ready: false, grade: "at_risk" });
     expect(state.planning.blockers.map((blocker) => blocker.code)).toEqual(["missing_rollback"]);
-    expect(state.shipping.gate).toBe("shape");
+    // LB-28: discovery is the first ordered authority, so an issue with no
+    // recorded premise is held there rather than at shape.
+    expect(state.shipping.gate).toBe("discovery");
   });
 
   it("allows one legacy planning backfill after review and freezes it afterward", () => {
@@ -275,10 +298,11 @@ describe("bounded review and shipping authority", () => {
       INSERT INTO review_passes (id, issue_id, pass_number, kind, verdict, summary)
       VALUES ('LEGACY-P1', 'LEGACY-1', 1, 'comprehensive', 'pass', 'Legacy review completed.');
     `);
-    expect(substrate(db, "LEGACY-1").shipping.gate).toBe("shape");
+    expect(substrate(db, "LEGACY-1").shipping.gate).toBe("discovery");
     expect(recordPass(db, { issueId: "LEGACY-1", passNumber: 1, verdict: "pass", summary: "Legacy review completed." }).review.pass_count).toBe(1);
     expect(() => recordPass(db, { issueId: "LEGACY-1", passNumber: 2, verdict: "pass", summary: "Must not continue yet." })).toThrowError(/shape disposition/i);
     expect(recordPlanning(db, "LEGACY-1", healthyPlanning(["LEGACY-B1"])).ready).toBe(true);
+    satisfyDiscovery(db, "LEGACY-1");
     recordShape(db, "LEGACY-1", healthyShape());
     expect(() => recordPass(db, { issueId: "LEGACY-1", passNumber: 2, verdict: "pass", summary: "Must not continue yet." })).toThrowError(/independent planning review/i);
     recordPlanningReviewPass(db, { issueId: "LEGACY-1", passNumber: 1, verdict: "approved", summary: "Legacy planning backfill approved." });
@@ -334,6 +358,9 @@ describe("bounded review and shipping authority", () => {
       behaviors: [{ id: "SHAPE-B1", title: "Do it", trigger: "Requested", expected: "Done", verify: "Run wired proof" }],
       planning: healthyPlanning(["SHAPE-B1"]),
     });
+    // Discovery is satisfied so the assertions below isolate the SHAPE
+    // disposition rule rather than tripping over the gate above it.
+    satisfyDiscovery(db, "SHAPE-1");
     for (const disposition of ["spike", "park", "reject"] as const) {
       expect(recordShape(db, "SHAPE-1", healthyShape(disposition))).toMatchObject({ ready: false, blockers: [{ code: `shape_${disposition}` }] });
     }
@@ -348,6 +375,7 @@ describe("bounded review and shipping authority", () => {
       behaviors: [{ id: "PREVIEW-B1", title: "Do it", trigger: "Requested", expected: "Done", verify: "Run wired proof" }],
       planning: healthyPlanning(["PREVIEW-B1"]),
     });
+    satisfyDiscovery(db, "PREVIEW-1");
     recordShape(db, "PREVIEW-1", healthyShape());
     recordPlanningReviewPass(db, { issueId: "PREVIEW-1", passNumber: 1, verdict: "changes_required", summary: "One root cause." });
     upsertPlanningFinding(db, {
@@ -370,6 +398,7 @@ describe("bounded review and shipping authority", () => {
       behaviors: [{ id: "PREVIEW-B2", title: "Do it", trigger: "Requested", expected: "Done", verify: "Run wired proof" }],
       planning: healthyPlanning(["PREVIEW-B2"]),
     });
+    satisfyDiscovery(db, "PREVIEW-2");
     recordShape(db, "PREVIEW-2", healthyShape());
     recordPlanningReviewPass(db, { issueId: "PREVIEW-2", passNumber: 1, verdict: "approved", summary: "Coherent." });
     expect(recordShape(db, "PREVIEW-2", healthyShape()).ready).toBe(true);

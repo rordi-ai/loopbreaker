@@ -4,7 +4,9 @@ import { z } from "zod";
 import { openDb } from "./db.js";
 import {
   createWaiver,
+  discoveryState,
   DomainError,
+  recordDiscovery,
   importContract,
   planningHealth,
   recordEvidence,
@@ -159,6 +161,37 @@ export async function runMcp(dbPath?: string): Promise<void> {
     },
     async ({ issue_id, planning }) => {
       try { return content(planningSummary(recordPlanning(db, issue_id, planning)), db.path); }
+      catch (error) { return toolError(error); }
+    },
+  );
+
+  server.registerTool(
+    "discovery_record",
+    {
+      description: "Record the founder interview as one answer per required shape field (problem, appetite, smallest_slice, non_goals, success_signal, reversibility, decision_owner, risks). Transcribe answers a human actually gave; never invent them. Recording leaves the record a DRAFT — approval is deliberately not available over MCP.",
+      inputSchema: {
+        issue_id: z.string().min(1),
+        answers: z.array(z.object({
+          field: z.string().min(1),
+          question: z.string().min(1),
+          answer: z.string().min(1),
+        })).min(1),
+      },
+    },
+    async (input) => {
+      try { return content(recordDiscovery(db, input.issue_id, input.answers), db.path); }
+      catch (error) { return toolError(error); }
+    },
+  );
+
+  server.registerTool(
+    "discovery_state",
+    {
+      description: "Read an issue's discovery record: its answers and whether it is approved, grandfathered, or still a draft. Shape cannot reach proceed until it is approved.",
+      inputSchema: { issue_id: z.string().min(1) },
+    },
+    async (input) => {
+      try { return content(discoveryState(db, input.issue_id), db.path); }
       catch (error) { return toolError(error); }
     },
   );

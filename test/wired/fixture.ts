@@ -64,6 +64,21 @@ export async function driveAllWriters(workspace: Workspace): Promise<DrivenFixtu
   // 1. issues + behaviors (+ planning_profiles, since the contract carries planning)
   await cliOk(["init"], { db });
   await cliOk(["import", contractPath], { db });
+  // 1b. LB-28 — discovery is the first ordered authority, so the fixture must
+  // clear it before shape can reach proceed and the later gates can open.
+  const discoveryPath = join(workspace.dir, "discovery.json");
+  writeFileSync(discoveryPath, JSON.stringify({
+    answers: [
+      "problem", "appetite", "smallest_slice", "non_goals",
+      "success_signal", "reversibility", "decision_owner", "risks",
+    ].map((field) => ({
+      field,
+      question: `What is the ${field}?`,
+      answer: `Fixture answer for ${field}.`,
+    })),
+  }));
+  await cliOk(["discover", FIXTURE_ISSUE, discoveryPath], { db });
+  await cliOk(["discover", FIXTURE_ISSUE, "--approve", "--by", "fixture-founder"], { db });
   // 2. shape_assessments
   await cliOk(["shape", FIXTURE_ISSUE, shapePath], { db });
   // 3. planning_profiles, explicitly through the plan writer

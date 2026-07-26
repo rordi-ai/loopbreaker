@@ -4,9 +4,28 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runLinkCommand, type Flags } from "../src/cli.js";
 import { LoopbreakerDb } from "../src/db.js";
-import { DomainError, importContract, recordEvidence, recordPlanningReviewPass, recordShape, upsertFinding, upsertPlanningFinding, verifyBehavior } from "../src/domain.js";
+import { DomainError, importContract, recordEvidence, recordPlanningReviewPass, recordShape, upsertFinding, upsertPlanningFinding, verifyBehavior, DISCOVERY_FIELDS, approveDiscovery, recordDiscovery } from "../src/domain.js";
 import { composePrime, primePayload, renderPrime, resolveIssue } from "../src/prime.js";
 import type { PlanningProfile, ShapeProfile } from "../src/types.js";
+
+/**
+ * LB-28 — satisfy the discovery gate for a fixture issue.
+ *
+ * Discovery is the first ordered authority, so any test that drives an issue
+ * past shape needs an approved premise. These tests cover DOWNSTREAM stages and
+ * use shape as scaffolding; the gate itself is covered by the LB-28 wired
+ * harnesses. Recording it explicitly keeps that dependency visible rather than
+ * quietly exempting the suite.
+ */
+function satisfyDiscovery(db: LoopbreakerDb, issueId: string): void {
+  recordDiscovery(db, issueId, DISCOVERY_FIELDS.map((field) => ({
+    field,
+    question: `What is the ${field}?`,
+    answer: `Fixture answer for ${field}.`,
+  })));
+  approveDiscovery(db, issueId, "fixture-founder");
+}
+
 
 const databases: LoopbreakerDb[] = [];
 
@@ -123,6 +142,7 @@ describe("composePrime / renderPrime determinism", () => {
       ],
       planning: healthyPlanning([`${issueId}-B1`, `${issueId}-B2`]),
     });
+    satisfyDiscovery(db, issueId);
     recordShape(db, issueId, healthyShape());
     recordPlanningReviewPass(db, { issueId, passNumber: 1, verdict: "approved", summary: "Coherent." });
   }
@@ -161,7 +181,7 @@ describe("composePrime / renderPrime determinism", () => {
     });
   });
 
-  it("reflects the shape gate before shape is recorded", () => {
+  it("reflects the discovery gate before any premise is recorded", () => {
     const db = database();
     importContract(db, {
       issueId: "PRIME-2", title: "Not yet shaped",
@@ -169,7 +189,7 @@ describe("composePrime / renderPrime determinism", () => {
     });
     const block = composePrime(db, "PRIME-2");
     expect(block.authority_chain.shape).toEqual({ disposition: null, ready: false });
-    expect(block.next_action).toBe("record shape proceed");
+    expect(block.next_action).toBe("interview the founder and get the discovery record approved");
   });
 
   it("reflects the planning_review gate and surfaces its own next_action", () => {
@@ -179,6 +199,7 @@ describe("composePrime / renderPrime determinism", () => {
       behaviors: [{ id: "PRIME-3-B1", title: "Do it", trigger: "Requested", expected: "Done", verify: "Run wired proof" }],
       planning: healthyPlanning(["PRIME-3-B1"]),
     });
+    satisfyDiscovery(db, "PRIME-3");
     recordShape(db, "PRIME-3", healthyShape());
     const block = composePrime(db, "PRIME-3");
     expect(block.authority_chain.shipping.disposition).toBe("hold");
@@ -192,6 +213,7 @@ describe("composePrime / renderPrime determinism", () => {
       behaviors: [{ id: "PRIME-4-B1", title: "Do it", trigger: "Requested", expected: "Done", verify: "Run wired proof" }],
       planning: healthyPlanning(["PRIME-4-B1"]),
     });
+    satisfyDiscovery(db, "PRIME-4");
     recordShape(db, "PRIME-4", healthyShape());
     recordPlanningReviewPass(db, { issueId: "PRIME-4", passNumber: 1, verdict: "changes_required", summary: "One issue." });
     upsertPlanningFinding(db, {
@@ -314,6 +336,7 @@ describe("primePayload: the single function both the CLI and the MCP tool call",
       behaviors: [{ id: `${issueId}-B1`, title: "Persist before invoking", trigger: "Requested", expected: "Persisted first", verify: "Trace wired request" }],
       planning: healthyPlanning([`${issueId}-B1`]),
     });
+    satisfyDiscovery(db, issueId);
     recordShape(db, issueId, healthyShape());
     recordPlanningReviewPass(db, { issueId, passNumber: 1, verdict: "approved", summary: "Coherent." });
   }

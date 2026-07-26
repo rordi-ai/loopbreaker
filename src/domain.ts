@@ -63,6 +63,15 @@ export function shapeState(db: LoopbreakerDb, issueId: string): ShapeState {
   if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`, "Import its behavior contract first.");
   const profile = db.shapeProfile(issueId);
   const blockers: ShapeState["blockers"] = [];
+  // LB-28 — discovery is the first ordered authority. A shape may be drafted
+  // from an approved record (that is the shaping agent's job); what is refused
+  // is `proceed` on a premise no human ever approved.
+  const discovery = discoveryState(db, issueId);
+  if (discovery.status === "missing") {
+    blockers.push({ code: "missing_discovery", message: "No discovery record exists; the premise has no human behind it." });
+  } else if (discovery.status === "draft") {
+    blockers.push({ code: "unapproved_discovery", message: "The discovery record is still a draft and has not been approved." });
+  }
   if (!profile) blockers.push({ code: "missing_shape", message: "No explicit shape decision is recorded." });
   if (profile) {
     const required = [profile.problem, profile.appetite, profile.smallest_slice, profile.success_signal, profile.reversibility, profile.decision_owner];
@@ -225,7 +234,19 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
   const unresolved = enforced.filter((behavior) => !resolved.has(behavior.id));
 
   let shipping: ShipState;
-  if (!shape.ready) {
+  // LB-28 — discovery gates ahead of shape, so an issue held for a missing
+  // premise reports THAT rather than a downstream stage it never reached.
+  const discovery = discoveryState(db, issueId);
+  if (!discovery.satisfied) {
+    shipping = {
+      disposition: "hold", ready: false,
+      reason: discovery.status === "missing"
+        ? "No discovery record exists; the premise has no human behind it."
+        : "The discovery record is still a draft and has not been approved.",
+      enforced_total: enforced.length, verified_total: verified.length, waived_total: waived.length,
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id), gate: "discovery", planning_score: planning.score,
+    };
+  } else if (!shape.ready) {
     shipping = {
       disposition: "hold", ready: false,
       reason: `Shape is not ready: ${shape.blockers.map((blocker) => blocker.code).join(", ")}.`,
@@ -793,4 +814,126 @@ export function bindHarness(db: LoopbreakerDb, behaviorId: string, harnessRef: s
     "UPDATE behaviors SET harness_ref = ?, trigger_type = ?, triggered_by = ?, trigger_data = ? WHERE id = ?",
   ).run(harnessRef, ...db.provenanceValues(), behaviorId);
   return substrate(db, behavior.issue_id);
+}
+
+/**
+ * LB-28 — the shape fields a discovery record must answer before the gate opens.
+ *
+ * Field-isomorphic by construction: one answer per field, so LB-25's stronger
+ * value-binding becomes a later increment on this storage rather than a rewrite.
+ */
+export const DISCOVERY_FIELDS = [
+  "problem",
+  "appetite",
+  "smallest_slice",
+  "non_goals",
+  "success_signal",
+  "reversibility",
+  "decision_owner",
+  "risks",
+] as const;
+
+export interface DiscoveryAnswer {
+  field: string;
+  question: string;
+  answer: string;
+}
+
+export interface DiscoveryState {
+  issue_id: string;
+  status: "missing" | "draft" | "approved" | "grandfathered";
+  approved_by: string | null;
+  approved_at: string | null;
+  answers: DiscoveryAnswer[];
+  /** True when the premise has a human behind it, or the issue predates the gate. */
+  satisfied: boolean;
+}
+
+export function discoveryState(db: LoopbreakerDb, issueId: string): DiscoveryState {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`);
+  const record = db.raw.prepare(
+    "SELECT status, approved_by, approved_at FROM discovery_records WHERE issue_id = ?",
+  ).get(issueId) as { status: DiscoveryState["status"]; approved_by: string | null; approved_at: string | null } | undefined;
+  const answers = db.raw.prepare(
+    "SELECT field, question, answer FROM discovery_answers WHERE issue_id = ? ORDER BY rowid",
+  ).all(issueId) as unknown as DiscoveryAnswer[];
+  const status = record?.status ?? "missing";
+  return {
+    issue_id: issueId,
+    status,
+    approved_by: record?.approved_by ?? null,
+    approved_at: record?.approved_at ?? null,
+    answers,
+    satisfied: status === "approved" || status === "grandfathered",
+  };
+}
+
+/**
+ * Record or replace an issue's discovery answers.
+ *
+ * Replacing the answers returns the record to `draft`, even if it was approved:
+ * an approved premise silently edited afterwards would have the gate vouch for
+ * text the approver never saw — the same defect one layer up.
+ */
+export function recordDiscovery(db: LoopbreakerDb, issueId: string, answers: DiscoveryAnswer[]): DiscoveryState {
+  if (!db.issue(issueId)) throw new DomainError("issue_not_found", `Issue ${issueId} does not exist.`);
+  const supplied = new Map(answers.map((entry) => [entry.field, entry]));
+  const missing = DISCOVERY_FIELDS.filter((field) => {
+    const entry = supplied.get(field);
+    return !entry || !present(entry.question) || !present(entry.answer);
+  });
+  if (missing.length > 0) {
+    throw new DomainError(
+      "incomplete_discovery",
+      `The discovery record leaves required shape fields unanswered: ${missing.join(", ")}.`,
+      "Every required shape field needs a question and a founder answer. Interview for what is missing; do not invent it.",
+    );
+  }
+  const provenance = db.provenanceValues();
+  db.transaction(() => {
+    db.raw.prepare("DELETE FROM discovery_answers WHERE issue_id = ?").run(issueId);
+    const statement = db.raw.prepare(`
+      INSERT INTO discovery_answers (issue_id, field, question, answer, trigger_type, triggered_by, trigger_data)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const field of DISCOVERY_FIELDS) {
+      const entry = supplied.get(field)!;
+      statement.run(issueId, field, entry.question, entry.answer, ...provenance);
+    }
+    db.raw.prepare(`
+      INSERT INTO discovery_records (issue_id, status, approved_by, approved_at, trigger_type, triggered_by, trigger_data)
+      VALUES (?, 'draft', NULL, NULL, ?, ?, ?)
+      ON CONFLICT(issue_id) DO UPDATE SET
+        status = 'draft', approved_by = NULL, approved_at = NULL,
+        updated_at = CURRENT_TIMESTAMP,
+        trigger_type = excluded.trigger_type, triggered_by = excluded.triggered_by, trigger_data = excluded.trigger_data
+    `).run(issueId, ...provenance);
+  });
+  return discoveryState(db, issueId);
+}
+
+/**
+ * Approve a discovery record — the one act an agent must not be able to issue on
+ * its own behalf.
+ *
+ * NAMED RESIDUAL RISK: until a `web` trigger_type exists, cli and web ingresses
+ * are indistinguishable in provenance, so an in-session agent can invoke this.
+ * The approval is attributable, not yet unforgeable. Stated rather than implied.
+ */
+export function approveDiscovery(db: LoopbreakerDb, issueId: string, approvedBy: string): DiscoveryState {
+  const state = discoveryState(db, issueId);
+  if (state.status === "missing") {
+    throw new DomainError("missing_discovery", `${issueId} has no discovery record to approve.`, "Record the interview answers first.");
+  }
+  if (state.status === "grandfathered") {
+    throw new DomainError("discovery_grandfathered", `${issueId} predates the discovery gate and needs no approval.`);
+  }
+  if (!present(approvedBy)) throw new DomainError("missing_flag", "An approver must be named.", "Pass --by NAME.");
+  db.raw.prepare(`
+    UPDATE discovery_records
+    SET status = 'approved', approved_by = ?, approved_at = CURRENT_TIMESTAMP,
+        trigger_type = ?, triggered_by = ?, trigger_data = ?
+    WHERE issue_id = ?
+  `).run(approvedBy, ...db.provenanceValues(), issueId);
+  return discoveryState(db, issueId);
 }
