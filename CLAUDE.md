@@ -3,7 +3,7 @@
 ## Claude Code specifics
 
 - This repository is also a Claude Code plugin: `.claude-plugin/plugin.json`
-  registers the bundled MCP server; the six skills under `skills/` and the
+  registers the bundled MCP server; the seven skills under `skills/` and the
   `impl-worker` agent under `agents/` are auto-discovered (skills namespaced as
   `/loopbreaker:<skill-name>`).
 - `.mcp.json` doubles as the project-scope MCP config, so working inside this

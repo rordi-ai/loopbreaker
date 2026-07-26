@@ -1,0 +1,4 @@
+interface:
+  display_name: "Discovery Interview"
+  short_description: "Interview the founder until every shape field has a human behind it"
+  default_prompt: "Use $discovery-interview to establish this issue's premise before shaping it."

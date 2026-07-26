@@ -17,8 +17,9 @@ or rollback was never made explicit. Loopbreaker makes the distinct authorities
 explicit: shape, structural planning health, semantic planning approval,
 implementation review, and shipping readiness.
 
-It now packages the complete public workflow as six reusable agent skills:
+It now packages the complete public workflow as seven reusable agent skills:
 
+- `discovery-interview` — interview until every shape field traces to a human answer.
 - `shape-strategy` — frame appetite, reversibility, smallest slice, and success.
 - `plan-feature` — freeze enforced behaviors and reach healthy planning.
 - `review-planning` — independently approve or redirect shape and planning in at most three passes.
@@ -77,7 +78,7 @@ it with `--db PATH` or `LOOPBREAKER_DB`.
 ## Install as a Codex plugin
 
 The repository is a complete plugin: [.codex-plugin/plugin.json](.codex-plugin/plugin.json)
-registers the six skills and [.mcp.json](.mcp.json) starts the bundled local MCP
+registers the seven skills and [.mcp.json](.mcp.json) starts the bundled local MCP
 server. No TypeScript runtime is needed after the repository has been built.
 
 ```sh
@@ -94,7 +95,7 @@ otherwise the server uses `.loopbreaker/loopbreaker.db` under its working direct
 The same repository is also a Claude Code plugin:
 [.claude-plugin/plugin.json](.claude-plugin/plugin.json) starts the bundled MCP
 server (database at `.loopbreaker/loopbreaker.db` under the current project), and
-the six skills under [skills/](skills/) are auto-discovered as
+the seven skills under [skills/](skills/) are auto-discovered as
 `/loopbreaker:<skill-name>`. The `impl-worker` subagent used by
 `orchestrate-delivery` is auto-discovered from [agents/](agents/).
 
@@ -134,10 +135,12 @@ Build the repo, then add this local stdio server to your MCP client config:
 ```
 
 The server tells agents to read the ordered delivery authority before implementation
-or review, load the substrate, and check ship status separately. It exposes fifteen focused tools:
+or review, load the substrate, and check ship status separately. It exposes eighteen focused tools:
 
 | Tool | Purpose |
 | --- | --- |
+| `discovery_record` | Record the founder interview, one answer per required shape field |
+| `discovery_state` | Read the discovery record and whether it is approved |
 | `review_import_contract` | Import behavior children; enforced unless explicitly advisory |
 | `shape_record` | Persist the explicit proceed, spike, park, or reject shape decision |
 | `planning_record` | Record a partial or complete pre-review planning profile |
@@ -150,9 +153,12 @@ or review, load the substrate, and check ship status separately. It exposes fift
 | `review_upsert_finding` | Preserve one stable row per review root cause |
 | `review_record_pass` | Record the next pass, limited to 1–3 |
 | `review_record_evidence` | Attach unit, wired, or live proof |
-| `review_verify_behavior` | Verify a behavior using attached passing evidence |
+| `review_verify_behavior` | Verify a behavior using executed passing evidence |
 | `review_create_waiver` | Accept named debt with an approver and rationale |
 | `review_ship_status` | Read the authoritative ship disposition |
+
+There is deliberately **no discovery approval tool**. Recording the interview is
+the agent's job; approving it is not, so approval exists only on the CLI.
 
 The MCP results are TOON text blocks. Run a real client/server handshake with:
 

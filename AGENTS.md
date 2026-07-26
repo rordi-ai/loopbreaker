@@ -9,7 +9,7 @@ Before completing a change, run:
 pnpm verify
 ```
 
-This also verifies the six plugin skills, both plugin manifests (Codex and
+This also verifies the seven plugin skills, both plugin manifests (Codex and
 Claude Code), the bundled MCP entry point, tool discovery, and one real MCP call.
 When the Codex skill/plugin validators are installed, also run their validators
 against each `skills/*` directory and the repository root.
@@ -24,6 +24,8 @@ loopbreaker serve --db /tmp/loopbreaker-demo.db
 
 The domain rules are non-negotiable:
 
+- A shape cannot reach `proceed` without a founder-approved discovery record.
+  Discovery is the first ordered authority; the premise must come from a human.
 - Behavior children are enforced by default unless explicitly advisory.
 - An issue's behavior children freeze its acceptance contract.
 - Implementation requires shape `proceed`, healthy planning, and independent

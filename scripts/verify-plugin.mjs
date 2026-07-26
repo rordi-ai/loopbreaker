@@ -3,7 +3,7 @@ import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 
 const root = resolve(import.meta.dirname, "..");
-const expectedSkills = ["shape-strategy", "plan-feature", "review-planning", "implement-feature", "review-invariants", "orchestrate-delivery"];
+const expectedSkills = ["discovery-interview", "shape-strategy", "plan-feature", "review-planning", "implement-feature", "review-invariants", "orchestrate-delivery"];
 const manifest = JSON.parse(readFileSync(resolve(root, ".codex-plugin/plugin.json"), "utf8"));
 const claudeManifest = JSON.parse(readFileSync(resolve(root, ".claude-plugin/plugin.json"), "utf8"));
 const mcp = JSON.parse(readFileSync(resolve(root, ".mcp.json"), "utf8"));

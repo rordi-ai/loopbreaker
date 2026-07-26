@@ -30,7 +30,8 @@ its own work. The frozen behavior contract is the only interface between them.
 
 ## Protocol
 
-1. **Gate.** Call `delivery_readiness`. Drive `shape-strategy`, `plan-feature`,
+1. **Gate.** Call `delivery_readiness`. Drive `discovery-interview` first when the
+   issue has no approved discovery record, then `shape-strategy`, `plan-feature`,
    and an independent `review-planning` (via the reviewer role) until
    `implementation.admitted` is true. Never start workers before admission.
 2. **Fan out.** Spawn one worker per work unit in parallel. Give each the frozen

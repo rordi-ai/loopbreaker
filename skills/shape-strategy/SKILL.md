@@ -28,10 +28,22 @@ not a feature spec and not a backlog.
    authoring action does not approve planning; a separate `$review-planning` agent
    owns that decision.
 
-Ask only for product judgment that cannot be learned from available context. Batch
-at most four independent questions. Lead with a recommendation and concrete
-trade-offs. Do not conduct an exhaustive interview for a broad initiative; confirm
-the framing and reserve detailed decisions for the first executable slice.
+## The premise is not yours to author
+
+`$discovery-interview` runs above this skill and produces a founder-approved
+discovery record. Your job is to **project that approved premise into shape
+fields**, not to invent one. Every shape field should trace to a recorded answer;
+read it with `loopbreaker discovery ISSUE`.
+
+Shape cannot reach `proceed` without that record, so an issue arriving here
+without one is not a shaping problem — it is a missing interview.
+
+Ask only for product judgment that cannot be learned from available context or
+from the approved record. Batch at most four independent questions. Lead with a
+recommendation and concrete trade-offs. Do not conduct an exhaustive interview
+for a broad initiative; confirm the framing and reserve detailed decisions for
+the first executable slice — the exhaustive walk belongs one stage up, at issue
+grain, in `$discovery-interview`.
 
 ## Spike rule
 
