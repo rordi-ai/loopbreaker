@@ -9,7 +9,7 @@
  * so this fixture necessarily walks shape -> planning -> planning review first.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { cliOk, readDb, withMcp, ROOT, type Workspace } from "./harness.js";
 
@@ -31,6 +31,9 @@ function loadContract(): { behaviors: Array<{ id: string }>; planning: unknown; 
   raw.behaviors = raw.behaviors.map((behavior: { id: string }, index: number) => ({
     ...behavior,
     id: `${FIXTURE_ISSUE}-B${index + 1}`,
+    // LB-27: the first behavior is the one driven to `verified`, so it needs a
+    // registered harness for `prove` to resolve.
+    ...(index === 0 ? { harness_ref: "fixture-wired" } : {}),
   }));
   // Re-key the planning proofs and work units onto the new behavior ids.
   const planning = raw.planning as { proofs?: Array<{ behavior_id: string }>; work_units?: Array<{ behavior_ids: string[] }> };
@@ -83,12 +86,17 @@ export async function driveAllWriters(workspace: Workspace): Promise<DrivenFixtu
   const verifiedBehaviorId = behaviorIds[0];
   const waivedBehaviorId = behaviorIds[1];
 
-  // 7. evidence
-  await cliOk(
-    ["evidence", FIXTURE_ISSUE, "--behavior", verifiedBehaviorId, "--tier", "wired", "--verdict", "pass",
-      "--summary", "Fixture wired proof.", "--source", "fixture://wired"],
-    { db },
-  );
+  // 7. evidence — produced by `prove`, not asserted. Since LB-27, an enforced
+  // behavior cannot be verified on evidence loopbreaker did not execute, so
+  // reaching the verifyBehavior write site at step 8 requires a real run.
+  const proofScript = join(workspace.dir, "fixture-proof.sh");
+  writeFileSync(proofScript, "#!/bin/sh\nexit 0\n");
+  chmodSync(proofScript, 0o755);
+  const fixtureRegistry = join(workspace.dir, "fixture-harnesses.json");
+  writeFileSync(fixtureRegistry, JSON.stringify({
+    harnesses: [{ id: "fixture-wired", tier: "wired", runner: "script", target: proofScript, purpose: "Fixture wired proof." }],
+  }));
+  await cliOk(["prove", verifiedBehaviorId, "--registry", fixtureRegistry], { db });
   const evidenceId = readDb(db, (handle) =>
     (handle.prepare("SELECT id FROM evidence WHERE behavior_id = ? ORDER BY rowid DESC LIMIT 1").get(verifiedBehaviorId) as { id: string }).id,
   );

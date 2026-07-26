@@ -33,7 +33,12 @@ export interface ProvenanceFields {
 
 export type BehaviorStatus = "pending" | "verified" | "failed" | "waived";
 export type EvidenceTier = "unit" | "wired" | "live";
-export type Verdict = "pass" | "fail";
+/**
+ * LB-27 — `not_run` is the fail-closed default. An unrun harness previously had
+ * no honest representation, so absence got encoded as one of the two decided
+ * states. It never verifies a behavior. Mirrors rordi's `evidence_verdict`.
+ */
+export type Verdict = "pass" | "fail" | "not_run";
 export type ReviewKind = "comprehensive" | "repair_verification" | "decision";
 export type FindingSeverity = "P0" | "P1" | "P2" | "P3";
 export type FindingStatus = "open" | "repaired" | "accepted_debt";
@@ -122,6 +127,8 @@ export interface BehaviorRow extends ProvenanceFields {
   trigger: string;
   expected: string;
   verify: string;
+  /** LB-27 — the registry entry id whose execution proves this behavior. */
+  harness_ref: string | null;
   status: BehaviorStatus;
   enforced: number;
   ordinal: number;
@@ -136,6 +143,14 @@ export interface EvidenceRow extends ProvenanceFields {
   summary: string;
   source: string;
   created_at: string;
+  /** LB-27 — 1 when loopbreaker executed the harness itself; 0 when a caller asserted the result. */
+  executed: number;
+  /** The registry entry that produced this row, when it was executed. */
+  harness_id: string | null;
+  /** The runner's exit code. Null when the harness could not be executed at all. */
+  exit_code: number | null;
+  /** 1 when an earlier executed FAIL exists for the same behavior and harness — the red baseline. */
+  baselined: number;
 }
 
 export interface ReviewPassRow extends ProvenanceFields {

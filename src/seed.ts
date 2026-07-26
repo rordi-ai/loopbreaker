@@ -24,20 +24,21 @@ export function seedDemo(db: LoopbreakerDb) {
     );
 
     const behavior = db.raw.prepare(`
-      INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal, trigger_type, triggered_by, trigger_data)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal, harness_ref, trigger_type, triggered_by, trigger_data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         trigger = excluded.trigger,
         expected = excluded.expected,
         verify = excluded.verify,
         enforced = excluded.enforced,
-        ordinal = excluded.ordinal
+        ordinal = excluded.ordinal,
+        harness_ref = excluded.harness_ref
     `);
-    behavior.run("DEMO-B1", DEMO_ISSUE, "Reuse a live successor after warm handoff", "A follow-up arrives while the successor is live.", "The existing successor handles the follow-up.", "Run a live handoff and observe the same successor session ID.", "verified", 1, 1, ...provenance);
-    behavior.run("DEMO-B2", DEMO_ISSUE, "Persist acceptance before the external SDK effect", "A worker accepts an external-effect request.", "Acceptance is durable before the SDK invocation starts.", "Trace the wired boundary and observe persistence preceding the SDK call.", "verified", 1, 2, ...provenance);
-    behavior.run("DEMO-B3", DEMO_ISSUE, "Redelivery produces the external effect exactly once", "Delivery is replayed after acceptance.", "The external effect occurs exactly once.", "Replay twice through the wired worker and observe one external effect.", "pending", 1, 3, ...provenance);
-    behavior.run("DEMO-B4", DEMO_ISSUE, "Expose operator timing diagnostics", "An operator inspects a retry.", "Timing fields are visible in diagnostics.", "Inspect one structured retry log.", "pending", 0, 4, ...provenance);
+    behavior.run("DEMO-B1", DEMO_ISSUE, "Reuse a live successor after warm handoff", "A follow-up arrives while the successor is live.", "The existing successor handles the follow-up.", "Run a live handoff and observe the same successor session ID.", "verified", 1, 1, null, ...provenance);
+    behavior.run("DEMO-B2", DEMO_ISSUE, "Persist acceptance before the external SDK effect", "A worker accepts an external-effect request.", "Acceptance is durable before the SDK invocation starts.", "Trace the wired boundary and observe persistence preceding the SDK call.", "verified", 1, 2, null, ...provenance);
+    behavior.run("DEMO-B3", DEMO_ISSUE, "Redelivery produces the external effect exactly once", "Delivery is replayed after acceptance.", "The external effect occurs exactly once.", "Replay twice through the wired worker and observe one external effect.", "pending", 1, 3, "demo-b3-replay", ...provenance);
+    behavior.run("DEMO-B4", DEMO_ISSUE, "Expose operator timing diagnostics", "An operator inspects a retry.", "Timing fields are visible in diagnostics.", "Inspect one structured retry log.", "pending", 0, 4, null, ...provenance);
 
     db.setPlanningProfile(DEMO_ISSUE, {
       outcome: "A warm follow-up remains correct across acceptance and replay boundaries.",

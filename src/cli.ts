@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { DomainError, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertPlanningFinding, verifyBehavior, createWaiver, importContract } from "./domain.js";
+import { DomainError, demoteUnexecuted, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertPlanningFinding, verifyBehavior, createWaiver, importContract } from "./domain.js";
+import { loadRegistry } from "./harness.js";
+import { proveBehavior } from "./prove.js";
 import { cliActor, openDb, type LoopbreakerDb } from "./db.js";
 import { dispatchHook } from "./hooks.js";
 import { primePayload } from "./prime.js";
@@ -36,6 +38,9 @@ Usage:
   loopbreaker pass ISSUE --pass N --verdict V --summary TEXT
   loopbreaker evidence ISSUE --behavior ID --tier T --verdict V --summary TEXT [--source URI]
   loopbreaker verify BEHAVIOR --evidence ID
+  loopbreaker harnesses [--registry PATH]      List the registered verify harnesses
+  loopbreaker prove BEHAVIOR [--live]          Execute the behavior's registered harness and record the result
+  loopbreaker demote --dry-run | --apply       Report or demote behaviors verified without an executed proof
   loopbreaker waive ISSUE --behavior ID --rationale TEXT --approved-by NAME
   loopbreaker serve [--db PATH] [--port 7331]  Start the local visual decision view
   loopbreaker mcp [--db PATH]                  Start the local MCP server over stdio
@@ -67,6 +72,9 @@ const COMMAND_HELP: Record<string, string> = {
   evidence: "loopbreaker evidence ISSUE [--behavior ID] --tier unit|wired|live --verdict pass|fail --summary TEXT [--source URI] [--db PATH]",
   verify: "loopbreaker verify BEHAVIOR --evidence ID [--db PATH]\n\nVerify a behavior with passing evidence attached to that behavior.",
   waive: "loopbreaker waive ISSUE --behavior ID --rationale TEXT --approved-by NAME [--db PATH]\n\nCreate durable named debt for one enforced behavior.",
+  harnesses: "loopbreaker harnesses [--registry PATH] [--db PATH]\n\nList every registered verify harness with its declared tier and runner. A behavior's harness_ref names an entry here; it never stores a command.",
+  prove: "loopbreaker prove BEHAVIOR [--live] [--registry PATH] [--db PATH]\n\nExecute the behavior's registered harness and record evidence whose verdict comes from the exit code. Rejects --verdict and --tier: the caller chooses which harness runs, never what the run concluded. A live-tier harness requires --live.",
+  demote: "loopbreaker demote --dry-run | --apply [--db PATH]\n\nReport, or apply, the demotion of every enforced behavior that reached verified without a proof loopbreaker executed. --dry-run changes nothing and names the exact set --apply would demote.",
   serve: "loopbreaker serve [--db PATH] [--port 7331]\n\nServe the visual review graph on 127.0.0.1.",
   mcp: "loopbreaker mcp [--db PATH]\n\nRun the MCP server over stdio for a local client process.",
   hook: "loopbreaker hook session-start [--db PATH]\nloopbreaker hook pre-tool-use [--db PATH]\n\nRead one hook event JSON object from stdin and write the host's expected hookSpecificOutput to stdout. Always exits 0; unknown or unparseable input fails open with no output (session-start) or allow (pre-tool-use).",
@@ -355,7 +363,7 @@ async function main(): Promise<void> {
       }
       const behaviors = record.behaviors.map((item) => {
         if (!item || typeof item !== "object") throw new DomainError("invalid_contract", "Each behavior must be an object.");
-        const behavior = item as { id?: unknown; title?: unknown; trigger?: unknown; expected?: unknown; verify?: unknown; advisory?: unknown };
+        const behavior = item as { id?: unknown; title?: unknown; trigger?: unknown; expected?: unknown; verify?: unknown; advisory?: unknown; harness_ref?: unknown };
         if (
           typeof behavior.id !== "string"
           || typeof behavior.title !== "string"
@@ -364,6 +372,7 @@ async function main(): Promise<void> {
           || typeof behavior.verify !== "string"
         ) throw new DomainError("invalid_contract", "Each behavior requires string id, title, trigger, expected, and verify.");
         if (behavior.advisory !== undefined && typeof behavior.advisory !== "boolean") throw new DomainError("invalid_contract", "behavior.advisory must be boolean when present.");
+        if (behavior.harness_ref !== undefined && typeof behavior.harness_ref !== "string") throw new DomainError("invalid_contract", "behavior.harness_ref must be a string when present.");
         return {
           id: behavior.id,
           title: behavior.title,
@@ -371,6 +380,7 @@ async function main(): Promise<void> {
           expected: behavior.expected,
           verify: behavior.verify,
           ...(typeof behavior.advisory === "boolean" ? { advisory: behavior.advisory } : {}),
+          ...(typeof behavior.harness_ref === "string" ? { harness_ref: behavior.harness_ref } : {}),
         };
       });
       output(importContract(db, {
@@ -486,6 +496,60 @@ async function main(): Promise<void> {
       output(verifyBehavior(db, behaviorId, required(flags, "evidence")), db);
       return;
     }
+    if (command === "harnesses") {
+      const registry = loadRegistry(typeof flags.registry === "string" ? flags.registry : undefined);
+      output({
+        registry: registry.path,
+        harnesses: registry.harnesses.map((entry) => ({
+          id: entry.id, tier: entry.tier, runner: entry.runner, target: entry.target, purpose: entry.purpose ?? "",
+        })),
+      }, db, ["loopbreaker prove <behavior>"]);
+      return;
+    }
+    if (command === "prove") {
+      const behaviorId = positional[1];
+      if (!behaviorId) throw new DomainError("missing_behavior", "A behavior ID is required.");
+      // LB-27: a caller chooses WHICH registered harness runs, never what the
+      // run concluded. Honouring either of these would reopen the exact hole
+      // this command exists to close, so they are refused rather than ignored.
+      for (const forbidden of ["verdict", "tier", "executed", "exit-code"]) {
+        if (flags[forbidden] !== undefined) {
+          throw new DomainError(
+            "outcome_not_caller_supplied",
+            `\`prove\` does not accept --${forbidden}.`,
+            "The verdict and tier come from the harness registry and the run's exit code.",
+          );
+        }
+      }
+      const result = proveBehavior(db, behaviorId, {
+        registryPath: typeof flags.registry === "string" ? flags.registry : undefined,
+        live: flags.live === true,
+      });
+      output({
+        behavior_id: result.behavior_id,
+        harness: result.harness.id,
+        tier: result.harness.tier,
+        verdict: result.verdict,
+        exit_code: result.exit_code,
+        duration_ms: result.duration_ms,
+        reason: result.reason,
+        shipping: result.substrate.shipping,
+      }, db, result.verdict === "pass" ? [`loopbreaker verify ${result.behavior_id} --evidence <id>`] : []);
+      return;
+    }
+    if (command === "demote") {
+      const apply = flags.apply === true;
+      if (!apply && flags["dry-run"] !== true) {
+        throw new DomainError("missing_flag", "Pass --dry-run to report, or --apply to demote.", "The report is the default safety: nothing changes without --apply.");
+      }
+      const result = demoteUnexecuted(db, { apply });
+      output({
+        applied: result.applied,
+        count: result.demoted.length,
+        demoted: result.demoted,
+      }, db, result.applied ? [] : ["loopbreaker demote --apply"]);
+      return;
+    }
     if (command === "waive") {
       const issueId = positional[1];
       if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
@@ -520,6 +584,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   main().catch((error) => {
     const known = error instanceof DomainError;
     process.stdout.write(`${failure(known ? error.code : "internal_error", error instanceof Error ? error.message : String(error), known ? error.hint : undefined)}\n`);
-    process.exitCode = known && ["missing_flag", "missing_issue", "missing_behavior", "missing_file", "invalid_value", "unknown_command", "invalid_port", "invalid_contract_file", "invalid_contract", "invalid_plan_file", "invalid_plan", "invalid_shape_file", "invalid_shape", "no_active_issue"].includes(error.code) ? 2 : 1;
+    process.exitCode = known && ["missing_flag", "missing_issue", "missing_behavior", "missing_file", "invalid_value", "unknown_command", "invalid_port", "invalid_contract_file", "invalid_contract", "invalid_plan_file", "invalid_plan", "invalid_shape_file", "invalid_shape", "no_active_issue", "outcome_not_caller_supplied", "harness_ref_missing", "harness_not_registered", "registry_missing", "registry_invalid", "registry_unreadable", "live_opt_in_required"].includes(error.code) ? 2 : 1;
   });
 }

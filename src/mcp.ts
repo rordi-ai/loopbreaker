@@ -114,6 +114,7 @@ export async function runMcp(dbPath?: string): Promise<void> {
           expected: z.string().min(1),
           verify: z.string().min(1),
           advisory: z.boolean().optional(),
+          harness_ref: z.string().min(1).optional(),
         })).min(1),
         planning: planningSchema.optional(),
       },

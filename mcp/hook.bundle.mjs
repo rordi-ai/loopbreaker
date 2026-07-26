@@ -100,7 +100,7 @@ var LoopbreakerDb = class {
         issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
         behavior_id TEXT REFERENCES behaviors(id) ON DELETE CASCADE,
         tier TEXT NOT NULL CHECK (tier IN ('unit', 'wired', 'live')),
-        verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail')),
+        verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail', 'not_run')),
         summary TEXT NOT NULL,
         source TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -183,6 +183,61 @@ var LoopbreakerDb = class {
     );
     for (const column of ["trigger", "expected", "verify"]) {
       if (!behaviorColumns.has(column)) this.raw.exec(`ALTER TABLE behaviors ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+    }
+    if (!behaviorColumns.has("harness_ref")) this.raw.exec("ALTER TABLE behaviors ADD COLUMN harness_ref TEXT");
+    const evidenceColumns = new Set(
+      this.raw.prepare("PRAGMA table_info(evidence)").all().map((column) => column.name)
+    );
+    for (const [column, ddl] of [
+      ["executed", "INTEGER NOT NULL DEFAULT 0"],
+      ["harness_id", "TEXT"],
+      ["exit_code", "INTEGER"],
+      ["baselined", "INTEGER NOT NULL DEFAULT 0"]
+    ]) {
+      if (!evidenceColumns.has(column)) this.raw.exec(`ALTER TABLE evidence ADD COLUMN ${column} ${ddl}`);
+    }
+    const evidenceDdl = this.raw.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'evidence'"
+    ).get()?.sql ?? "";
+    if (evidenceDdl && !evidenceDdl.includes("not_run")) {
+      this.raw.exec("PRAGMA foreign_keys = OFF");
+      this.raw.exec("BEGIN IMMEDIATE");
+      try {
+        this.raw.exec(`
+          CREATE TABLE evidence_lb27 (
+            id TEXT PRIMARY KEY,
+            issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+            behavior_id TEXT REFERENCES behaviors(id) ON DELETE CASCADE,
+            tier TEXT NOT NULL CHECK (tier IN ('unit', 'wired', 'live')),
+            verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail', 'not_run')),
+            summary TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            executed INTEGER NOT NULL DEFAULT 0,
+            harness_id TEXT,
+            exit_code INTEGER,
+            baselined INTEGER NOT NULL DEFAULT 0,
+            trigger_type TEXT,
+            triggered_by TEXT,
+            trigger_data TEXT
+          );
+          INSERT INTO evidence_lb27
+            (id, issue_id, behavior_id, tier, verdict, summary, source, created_at,
+             executed, harness_id, exit_code, baselined, trigger_type, triggered_by, trigger_data)
+          SELECT id, issue_id, behavior_id, tier, verdict, summary, source, created_at,
+                 executed, harness_id, exit_code, baselined, trigger_type, triggered_by, trigger_data
+          FROM evidence;
+          DROP TABLE evidence;
+          ALTER TABLE evidence_lb27 RENAME TO evidence;
+          CREATE INDEX IF NOT EXISTS idx_evidence_issue ON evidence(issue_id);
+        `);
+        this.raw.exec("COMMIT");
+      } catch (error) {
+        this.raw.exec("ROLLBACK");
+        throw error;
+      } finally {
+        this.raw.exec("PRAGMA foreign_keys = ON");
+      }
     }
     for (const table of PROVENANCE_TABLES) {
       const existing = new Set(

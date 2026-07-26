@@ -5,7 +5,8 @@ import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import type { LoopbreakerDb } from "./db.js";
-import { createWaiver, DomainError, recordEvidence, recordPass, substrate, upsertFinding, verifyBehavior } from "./domain.js";
+import { createWaiver, DomainError, recordPass, substrate, upsertFinding, verifyBehavior } from "./domain.js";
+import { proveBehavior } from "./prove.js";
 
 const WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../web-dist");
 const CONTENT_TYPES: Record<string, string> = {
@@ -66,7 +67,11 @@ function demoAction(db: LoopbreakerDb, issueId: string, action: string): unknown
   const behaviorId = state.shipping.unresolved_behavior_ids[0];
   if (!behaviorId) return state;
   if (action === "prove") {
-    recordEvidence(db, { issueId, behaviorId, tier: "wired", verdict: "pass", summary: "A real wired replay produced the external effect exactly once.", source: "demo://wired-replay" });
+    // LB-27: this used to record an ASSERTED wired pass and then verify on it —
+    // the browser button was the evidence-injection pattern, in the product's
+    // own showcase. It now executes DEMO-B3's registered harness, and the
+    // verdict comes from that run's exit code like everywhere else.
+    proveBehavior(db, behaviorId);
     const latest = db.evidence(issueId).filter((item) => item.behavior_id === behaviorId).at(-1);
     if (!latest) throw new DomainError("evidence_missing", "Could not find the newly recorded evidence.");
     // LB-21-B4: this was a raw `UPDATE findings` that bypassed src/domain.ts

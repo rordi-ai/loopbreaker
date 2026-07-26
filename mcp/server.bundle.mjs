@@ -21202,7 +21202,7 @@ var LoopbreakerDb = class {
         issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
         behavior_id TEXT REFERENCES behaviors(id) ON DELETE CASCADE,
         tier TEXT NOT NULL CHECK (tier IN ('unit', 'wired', 'live')),
-        verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail')),
+        verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail', 'not_run')),
         summary TEXT NOT NULL,
         source TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -21285,6 +21285,61 @@ var LoopbreakerDb = class {
     );
     for (const column of ["trigger", "expected", "verify"]) {
       if (!behaviorColumns.has(column)) this.raw.exec(`ALTER TABLE behaviors ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+    }
+    if (!behaviorColumns.has("harness_ref")) this.raw.exec("ALTER TABLE behaviors ADD COLUMN harness_ref TEXT");
+    const evidenceColumns = new Set(
+      this.raw.prepare("PRAGMA table_info(evidence)").all().map((column) => column.name)
+    );
+    for (const [column, ddl] of [
+      ["executed", "INTEGER NOT NULL DEFAULT 0"],
+      ["harness_id", "TEXT"],
+      ["exit_code", "INTEGER"],
+      ["baselined", "INTEGER NOT NULL DEFAULT 0"]
+    ]) {
+      if (!evidenceColumns.has(column)) this.raw.exec(`ALTER TABLE evidence ADD COLUMN ${column} ${ddl}`);
+    }
+    const evidenceDdl = this.raw.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'evidence'"
+    ).get()?.sql ?? "";
+    if (evidenceDdl && !evidenceDdl.includes("not_run")) {
+      this.raw.exec("PRAGMA foreign_keys = OFF");
+      this.raw.exec("BEGIN IMMEDIATE");
+      try {
+        this.raw.exec(`
+          CREATE TABLE evidence_lb27 (
+            id TEXT PRIMARY KEY,
+            issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+            behavior_id TEXT REFERENCES behaviors(id) ON DELETE CASCADE,
+            tier TEXT NOT NULL CHECK (tier IN ('unit', 'wired', 'live')),
+            verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail', 'not_run')),
+            summary TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            executed INTEGER NOT NULL DEFAULT 0,
+            harness_id TEXT,
+            exit_code INTEGER,
+            baselined INTEGER NOT NULL DEFAULT 0,
+            trigger_type TEXT,
+            triggered_by TEXT,
+            trigger_data TEXT
+          );
+          INSERT INTO evidence_lb27
+            (id, issue_id, behavior_id, tier, verdict, summary, source, created_at,
+             executed, harness_id, exit_code, baselined, trigger_type, triggered_by, trigger_data)
+          SELECT id, issue_id, behavior_id, tier, verdict, summary, source, created_at,
+                 executed, harness_id, exit_code, baselined, trigger_type, triggered_by, trigger_data
+          FROM evidence;
+          DROP TABLE evidence;
+          ALTER TABLE evidence_lb27 RENAME TO evidence;
+          CREATE INDEX IF NOT EXISTS idx_evidence_issue ON evidence(issue_id);
+        `);
+        this.raw.exec("COMMIT");
+      } catch (error2) {
+        this.raw.exec("ROLLBACK");
+        throw error2;
+      } finally {
+        this.raw.exec("PRAGMA foreign_keys = ON");
+      }
     }
     for (const table of PROVENANCE_TABLES) {
       const existing = new Set(
@@ -21701,8 +21756,8 @@ function importContract(db, input) {
     if (!existing || db.reviewPasses(input.issueId).length === 0 && !planningReviewState(db, input.issueId).approved) {
       db.raw.prepare("DELETE FROM behaviors WHERE issue_id = ?").run(input.issueId);
       const statement = db.raw.prepare(`
-        INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal, trigger_type, triggered_by, trigger_data)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+        INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal, harness_ref, trigger_type, triggered_by, trigger_data)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
       `);
       const provenance = db.provenanceValues();
       input.behaviors.forEach((behavior, index) => {
@@ -21715,6 +21770,7 @@ function importContract(db, input) {
           behavior.verify,
           behavior.advisory ? 0 : 1,
           index + 1,
+          behavior.harness_ref ?? null,
           ...provenance
         );
       });
@@ -21893,21 +21949,51 @@ function recordEvidence(db, input) {
   if (input.behaviorId && !current.behaviors.some((behavior) => behavior.id === input.behaviorId)) {
     throw new DomainError("behavior_not_found", `Behavior ${input.behaviorId} is not a child of ${input.issueId}.`);
   }
+  const baselined = input.executed && input.behaviorId && input.harnessId ? Boolean(db.raw.prepare(
+    "SELECT 1 FROM evidence WHERE behavior_id = ? AND harness_id = ? AND executed = 1 AND verdict = 'fail' LIMIT 1"
+  ).get(input.behaviorId, input.harnessId)) : false;
   db.raw.prepare(`
-    INSERT INTO evidence (id, issue_id, behavior_id, tier, verdict, summary, source, trigger_type, triggered_by, trigger_data)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(randomUUID(), input.issueId, input.behaviorId ?? null, input.tier, input.verdict, input.summary, input.source ?? "", ...db.provenanceValues());
+    INSERT INTO evidence (id, issue_id, behavior_id, tier, verdict, summary, source, executed, harness_id, exit_code, baselined, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    randomUUID(),
+    input.issueId,
+    input.behaviorId ?? null,
+    input.tier,
+    input.verdict,
+    input.summary,
+    input.source ?? "",
+    input.executed ? 1 : 0,
+    input.harnessId ?? null,
+    input.exitCode ?? null,
+    baselined ? 1 : 0,
+    ...db.provenanceValues()
+  );
   return substrate(db, input.issueId);
 }
 function verifyBehavior(db, behaviorId, evidenceId) {
   const behavior = db.raw.prepare("SELECT issue_id, enforced FROM behaviors WHERE id = ?").get(behaviorId);
   if (!behavior) throw new DomainError("behavior_not_found", `Behavior ${behaviorId} does not exist.`);
-  const evidence = db.raw.prepare("SELECT behavior_id, verdict, tier FROM evidence WHERE id = ?").get(evidenceId);
+  const evidence = db.raw.prepare("SELECT behavior_id, verdict, tier, executed FROM evidence WHERE id = ?").get(evidenceId);
   if (!evidence || evidence.behavior_id !== behaviorId) {
     throw new DomainError("evidence_mismatch", `Evidence ${evidenceId} is not attached to ${behaviorId}.`);
   }
+  if (evidence.verdict === "not_run") {
+    throw new DomainError(
+      "evidence_not_run",
+      "Evidence whose harness did not run cannot verify a behavior.",
+      "`not_run` is the fail-closed default: not observing a pass is never the same as passing."
+    );
+  }
   if (evidence.verdict !== "pass") {
     throw new DomainError("evidence_failed", "Failed evidence cannot verify a behavior.");
+  }
+  if (behavior.enforced === 1 && evidence.executed !== 1) {
+    throw new DomainError(
+      "evidence_not_executed",
+      "Asserted evidence cannot verify an enforced behavior; loopbreaker did not execute this proof.",
+      `Run \`loopbreaker prove ${behaviorId}\` so the verdict comes from the harness rather than from the caller.`
+    );
   }
   if (behavior.enforced === 1 && evidence.tier === "unit") {
     throw new DomainError(
@@ -22512,7 +22598,8 @@ async function runMcp(dbPath) {
           trigger: external_exports.string().min(1),
           expected: external_exports.string().min(1),
           verify: external_exports.string().min(1),
-          advisory: external_exports.boolean().optional()
+          advisory: external_exports.boolean().optional(),
+          harness_ref: external_exports.string().min(1).optional()
         })).min(1),
         planning: planningSchema.optional()
       }

@@ -1,0 +1,39 @@
+{
+  "problem": "Two kinds of duplicates accumulate across a repository over time with no mechanism to recognize them. Duplicate issues: the same problem is filed again as a fresh issue, fragmenting the corpus and spawning redundant delivery work. Duplicate findings: the same root cause is recorded independently in separate issues. Both inflate the substrate that agents read through review_substrate and delivery_readiness, raising context and cost, and neither a filer nor a reviewer can tell a novel record from one already known elsewhere.",
+  "appetite": "One focused slice adding a repository-wide semantic index over issues and findings with local, offline embeddings: dedup-at-write that surfaces near-duplicates at issue-filing and at finding-upsert, plus an explicit 'have we seen this' search. No native SQLite extension, no network at run time, no reflection/scoring/decay machinery.",
+  "smallest_slice": "Prevention runs before the write: a read-only preflight search over the global index lets a filer or agent find an existing issue or finding and reuse it instead of creating a duplicate. The write points themselves stay nonblocking — importing an issue and upserting a finding still always complete — but when a match above a configurable threshold exists they record an advisory duplicate_of linkage (and return the match) so any duplicate that is written anyway is recognized, navigable, and mergeable rather than silently accumulating. Both the preflight and the write-time surfacing use one local-embedding cosine search.",
+  "non_goals": [
+    "The sqlite-vector native extension: at repository-corpus scale, Float32 BLOBs in the existing node:sqlite plus brute-force cosine in JS are sufficient; keep the vector store behind one interface so sqlite-vector can be swapped in later only if scale demands it",
+    "Network or API embeddings: the model is a one-time local fetch, then fully offline and deterministic",
+    "Maturity, helpful/harmful scoring, or time-decay of records (cass's playbook system); this bet only dedups and surfaces",
+    "Dedup of behaviors, shape, planning entries, and evidence: only issues and findings are indexed in this slice",
+    "Auto-merging, auto-closing, or blocking: dedup surfaces candidates for agent/human confirmation and never silently collapses or rejects a distinct issue or finding",
+    "Lexical BM25/tantivy tier as a separate deliverable: a simple normalized-text prefilter is enough alongside the semantic index"
+  ],
+  "success_signal": "An agent that runs the preflight search before filing an issue or upserting a finding is shown any existing match above threshold and reuses it instead of creating a duplicate; and any duplicate written without the preflight is linked to its match (duplicate_of) so it is recognized and mergeable rather than accumulating unrecognized. Matches are found across the whole corpus including records that predate the feature. The path runs offline after the one-time model fetch, is stable across runs within a cosine tolerance, and degrades to no-dedup — never an error, never a blocked write — when the model is absent.",
+  "reversibility": "A single flag disables the semantic index: findings then record exactly as they do today with no dedup and no index reads, and removing the model reclaims disk. The existing findings and planning_findings tables are unchanged; the index is additive and advisory.",
+  "decision_owner": "b3nfreed@gmail.com (issue owner)",
+  "risks": [
+    {
+      "risk": "Semantic-on-by-default adds a model dependency to setup and could fail in air-gapped installs.",
+      "mitigation": "Fetch the pinned 23MB all-MiniLM-L6-v2 model at setup with a SHA256 checksum and an air-gapped from-file fallback; when the model is absent at run time, degrade silently to no dedup rather than erroring, so the gate path never breaks."
+    },
+    {
+      "risk": "Embedding drift across model versions makes stored vectors incomparable and dedup nondeterministic.",
+      "mitigation": "Pin the model id and revision, store the model identity alongside every vector, and treat vectors from a different model id as absent (recompute) rather than comparing across versions."
+    },
+    {
+      "risk": "False-positive similarity collapses two genuinely distinct root causes.",
+      "mitigation": "Surface matches as candidates for confirmation, never auto-merge; keep both finding IDs and issues traceable; default to a conservative threshold and make it configurable."
+    },
+    {
+      "risk": "A cross-issue index couples issues and could leak one issue's state into another's substrate.",
+      "mitigation": "Keep finding identity strictly per-issue; the surfaced match is an advisory pointer (issue id + finding id + score), never a merge, and it is read-side only."
+    },
+    {
+      "risk": "Issue-filing dedup false-positives could discourage or block a legitimately distinct issue.",
+      "mitigation": "Issue import always completes; the similar-issue match is returned as advisory context (existing issue ids + scores) for the filer to judge, never a rejection or an auto-close."
+    }
+  ],
+  "disposition": "proceed"
+}

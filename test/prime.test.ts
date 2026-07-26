@@ -212,7 +212,7 @@ describe("composePrime / renderPrime determinism", () => {
   it("drops behaviors from unverified_enforced_behaviors once verified", () => {
     const db = database();
     admittedIssue(db, "PRIME-5");
-    const withEvidence = recordEvidence(db, { issueId: "PRIME-5", behaviorId: "PRIME-5-B1", tier: "wired", verdict: "pass", summary: "Traced." });
+    const withEvidence = recordEvidence(db, { issueId: "PRIME-5", behaviorId: "PRIME-5-B1", tier: "wired", verdict: "pass", summary: "Traced.", executed: true, harnessId: "fixture" });
     const evidence = withEvidence.evidence.at(-1)!;
     verifyBehavior(db, "PRIME-5-B1", evidence.id);
 

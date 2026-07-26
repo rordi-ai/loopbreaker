@@ -333,7 +333,7 @@ export function importContract(
     issueId: string;
     title: string;
     description?: string;
-    behaviors: Array<{ id: string; title: string; trigger: string; expected: string; verify: string; advisory?: boolean }>;
+    behaviors: Array<{ id: string; title: string; trigger: string; expected: string; verify: string; advisory?: boolean; harness_ref?: string }>;
     planning?: PlanningProfile;
   },
 ): Substrate {
@@ -381,8 +381,8 @@ export function importContract(
       db.raw.prepare("DELETE FROM behaviors WHERE issue_id = ?").run(input.issueId);
       // LB-21 write site 2/12 — behaviors on insert.
       const statement = db.raw.prepare(`
-        INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal, trigger_type, triggered_by, trigger_data)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+        INSERT INTO behaviors (id, issue_id, title, trigger, expected, verify, status, enforced, ordinal, harness_ref, trigger_type, triggered_by, trigger_data)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
       `);
       const provenance = db.provenanceValues();
       input.behaviors.forEach((behavior, index) => {
@@ -395,6 +395,7 @@ export function importContract(
           behavior.verify,
           behavior.advisory ? 0 : 1,
           index + 1,
+          behavior.harness_ref ?? null,
           ...provenance,
         );
       });
@@ -603,30 +604,74 @@ export function upsertFinding(
 
 export function recordEvidence(
   db: LoopbreakerDb,
-  input: { issueId: string; behaviorId?: string; tier: EvidenceTier; verdict: Verdict; summary: string; source?: string },
+  input: {
+    issueId: string;
+    behaviorId?: string;
+    tier: EvidenceTier;
+    verdict: Verdict;
+    summary: string;
+    source?: string;
+    /**
+     * LB-27 — set ONLY by the prove path. A caller cannot claim execution: the
+     * CLI and MCP evidence surfaces do not expose these, so anything recorded
+     * through them is `executed: 0` by construction.
+     */
+    executed?: boolean;
+    harnessId?: string;
+    exitCode?: number | null;
+  },
 ): Substrate {
   const current = substrate(db, input.issueId);
   if (input.behaviorId && !current.behaviors.some((behavior) => behavior.id === input.behaviorId)) {
     throw new DomainError("behavior_not_found", `Behavior ${input.behaviorId} is not a child of ${input.issueId}.`);
   }
+  // A red baseline exists when this behavior has already recorded an EXECUTED
+  // failure from the same harness. That is what makes a later pass meaningful:
+  // the harness has been observed discriminating.
+  const baselined = input.executed && input.behaviorId && input.harnessId
+    ? Boolean(db.raw.prepare(
+        "SELECT 1 FROM evidence WHERE behavior_id = ? AND harness_id = ? AND executed = 1 AND verdict = 'fail' LIMIT 1",
+      ).get(input.behaviorId, input.harnessId))
+    : false;
   db.raw.prepare(`
-    INSERT INTO evidence (id, issue_id, behavior_id, tier, verdict, summary, source, trigger_type, triggered_by, trigger_data)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(randomUUID(), input.issueId, input.behaviorId ?? null, input.tier, input.verdict, input.summary, input.source ?? "", ...db.provenanceValues());
+    INSERT INTO evidence (id, issue_id, behavior_id, tier, verdict, summary, source, executed, harness_id, exit_code, baselined, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    randomUUID(), input.issueId, input.behaviorId ?? null, input.tier, input.verdict, input.summary, input.source ?? "",
+    input.executed ? 1 : 0, input.harnessId ?? null, input.exitCode ?? null, baselined ? 1 : 0,
+    ...db.provenanceValues(),
+  );
   return substrate(db, input.issueId);
 }
 
 export function verifyBehavior(db: LoopbreakerDb, behaviorId: string, evidenceId: string): Substrate {
   const behavior = db.raw.prepare("SELECT issue_id, enforced FROM behaviors WHERE id = ?").get(behaviorId) as { issue_id: string; enforced: number } | undefined;
   if (!behavior) throw new DomainError("behavior_not_found", `Behavior ${behaviorId} does not exist.`);
-  const evidence = db.raw.prepare("SELECT behavior_id, verdict, tier FROM evidence WHERE id = ?").get(evidenceId) as
-    | { behavior_id: string | null; verdict: Verdict; tier: EvidenceTier }
+  const evidence = db.raw.prepare("SELECT behavior_id, verdict, tier, executed FROM evidence WHERE id = ?").get(evidenceId) as
+    | { behavior_id: string | null; verdict: Verdict; tier: EvidenceTier; executed: number }
     | undefined;
   if (!evidence || evidence.behavior_id !== behaviorId) {
     throw new DomainError("evidence_mismatch", `Evidence ${evidenceId} is not attached to ${behaviorId}.`);
   }
+  if (evidence.verdict === "not_run") {
+    throw new DomainError(
+      "evidence_not_run",
+      "Evidence whose harness did not run cannot verify a behavior.",
+      "`not_run` is the fail-closed default: not observing a pass is never the same as passing.",
+    );
+  }
   if (evidence.verdict !== "pass") {
     throw new DomainError("evidence_failed", "Failed evidence cannot verify a behavior.");
+  }
+  // LB-27 — the gate. An enforced behavior needs proof loopbreaker executed
+  // itself, not a caller's claim about a run. This is the mirror of the
+  // enforced+unit refusal below, closing the same hole one level up.
+  if (behavior.enforced === 1 && evidence.executed !== 1) {
+    throw new DomainError(
+      "evidence_not_executed",
+      "Asserted evidence cannot verify an enforced behavior; loopbreaker did not execute this proof.",
+      `Run \`loopbreaker prove ${behaviorId}\` so the verdict comes from the harness rather than from the caller.`,
+    );
   }
   if (behavior.enforced === 1 && evidence.tier === "unit") {
     throw new DomainError(
@@ -664,4 +709,64 @@ export function createWaiver(
     "UPDATE behaviors SET status = 'waived', trigger_type = ?, triggered_by = ?, trigger_data = ? WHERE id = ?",
   ).run(...db.provenanceValues(), input.behaviorId);
   return substrate(db, input.issueId);
+}
+
+/** One behavior that reached `verified` without proof loopbreaker executed. */
+export interface DemotionCandidate {
+  behavior_id: string;
+  issue_id: string;
+  title: string;
+  enforced: number;
+  reason: string;
+}
+
+/**
+ * LB-27 — every enforced behavior currently `verified` whose supporting evidence
+ * was asserted rather than executed.
+ *
+ * Pure read. `demote --dry-run` reports exactly this set and changes nothing;
+ * `--apply` demotes exactly this set. Keeping the two on one query is what makes
+ * the promise "applies the reported set" mechanically true rather than a claim.
+ */
+export function demotionCandidates(db: LoopbreakerDb): DemotionCandidate[] {
+  const rows = db.raw.prepare(`
+    SELECT b.id AS behavior_id, b.issue_id, b.title, b.enforced,
+           (SELECT COUNT(*) FROM evidence e WHERE e.behavior_id = b.id AND e.executed = 1 AND e.verdict = 'pass') AS executed_passes
+    FROM behaviors b
+    WHERE b.status = 'verified' AND b.enforced = 1
+    ORDER BY b.issue_id, b.ordinal
+  `).all() as Array<{ behavior_id: string; issue_id: string; title: string; enforced: number; executed_passes: number }>;
+
+  return rows
+    .filter((row) => row.executed_passes === 0)
+    .map((row) => ({
+      behavior_id: row.behavior_id,
+      issue_id: row.issue_id,
+      title: row.title,
+      enforced: row.enforced,
+      reason: "verified on evidence loopbreaker never executed",
+    }));
+}
+
+export interface DemotionResult {
+  applied: boolean;
+  demoted: DemotionCandidate[];
+}
+
+/**
+ * Report or apply the demotion. Idempotent: once demoted, a behavior is no
+ * longer `verified`, so a second apply finds nothing further.
+ */
+export function demoteUnexecuted(db: LoopbreakerDb, options: { apply: boolean }): DemotionResult {
+  const demoted = demotionCandidates(db);
+  if (!options.apply) return { applied: false, demoted };
+
+  const statement = db.raw.prepare(
+    "UPDATE behaviors SET status = 'pending', trigger_type = ?, triggered_by = ?, trigger_data = ? WHERE id = ?",
+  );
+  const provenance = db.provenanceValues();
+  db.transaction(() => {
+    for (const candidate of demoted) statement.run(...provenance, candidate.behavior_id);
+  });
+  return { applied: true, demoted };
 }

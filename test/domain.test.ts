@@ -102,7 +102,7 @@ describe("bounded review and shipping authority", () => {
   it("ships after proportionate wired proof verifies the remaining behavior", () => {
     const db = database();
     seedDemo(db);
-    const withEvidence = recordEvidence(db, { issueId: DEMO_ISSUE, behaviorId: "DEMO-B3", tier: "wired", verdict: "pass", summary: "Replay is exact once." });
+    const withEvidence = recordEvidence(db, { issueId: DEMO_ISSUE, behaviorId: "DEMO-B3", tier: "wired", verdict: "pass", summary: "Replay is exact once.", executed: true, harnessId: "fixture" });
     const evidence = withEvidence.evidence.at(-1);
     expect(evidence).toBeDefined();
     const state = verifyBehavior(db, "DEMO-B3", evidence!.id);
@@ -112,7 +112,25 @@ describe("bounded review and shipping authority", () => {
   it("does not let unit evidence alone verify an enforced behavior", () => {
     const db = database();
     seedDemo(db);
-    expect(() => verifyBehavior(db, "DEMO-B3", "DEMO-E3")).toThrowError(/Unit evidence alone/);
+    // LB-27: the executed-evidence gate now fires ahead of the tier rule, so
+    // this must use an EXECUTED unit proof to still reach the rule it covers.
+    // Complaining about the tier of asserted evidence would be incoherent
+    // anyway — an unexecuted row's tier is a caller's claim, not a fact.
+    const executedUnit = recordEvidence(db, {
+      issueId: DEMO_ISSUE, behaviorId: "DEMO-B3", tier: "unit", verdict: "pass",
+      summary: "A unit harness ran and passed.", executed: true, harnessId: "fixture-unit",
+    }).evidence.at(-1)!;
+    expect(() => verifyBehavior(db, "DEMO-B3", executedUnit.id)).toThrowError(/Unit evidence alone/);
+    expect(substrate(db, DEMO_ISSUE).shipping.disposition).toBe("hold");
+  });
+
+  it("does not let asserted evidence verify an enforced behavior", () => {
+    const db = database();
+    seedDemo(db);
+    // The seeded DEMO-E3 row was never executed by loopbreaker. Before LB-27 the
+    // only thing standing between it and a ship decision was its `unit` tier —
+    // a value the caller typed.
+    expect(() => verifyBehavior(db, "DEMO-B3", "DEMO-E3")).toThrowError(/did not execute this proof/);
     expect(substrate(db, DEMO_ISSUE).shipping.disposition).toBe("hold");
   });
 
@@ -206,7 +224,7 @@ describe("bounded review and shipping authority", () => {
     expect(() => recordPass(db, { issueId: "PLAN-2", passNumber: 1, verdict: "pass", summary: "Looks good." })).toThrowError(/shape disposition/i);
     recordShape(db, "PLAN-2", healthyShape());
     expect(() => recordPass(db, { issueId: "PLAN-2", passNumber: 1, verdict: "pass", summary: "Looks good." })).toThrowError(/planning health/i);
-    const evidence = recordEvidence(db, { issueId: "PLAN-2", behaviorId: "PLAN-B2", tier: "wired", verdict: "pass", summary: "Wired proof." }).evidence.at(-1)!;
+    const evidence = recordEvidence(db, { issueId: "PLAN-2", behaviorId: "PLAN-B2", tier: "wired", verdict: "pass", summary: "Wired proof.", executed: true, harnessId: "fixture" }).evidence.at(-1)!;
     expect(verifyBehavior(db, "PLAN-B2", evidence.id).shipping.gate).toBe("planning");
 
     const health = recordPlanning(db, "PLAN-2", healthyPlanning(["PLAN-B2"]));

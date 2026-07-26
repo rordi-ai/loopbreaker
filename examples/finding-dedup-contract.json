@@ -1,0 +1,116 @@
+{
+  "issue_id": "LB-19",
+  "title": "Bounded semantic dedup for issues and findings via a local offline vector layer",
+  "description": "Add a repository-wide semantic index over issues and findings using local, offline embeddings so duplicate issues are surfaced at filing and duplicate findings at upsert, capping corpus and context bloat. Dedup surfaces advisory matches and never blocks a write or auto-merges. Semantic is on by default via a one-time local model fetch; absence degrades to no-dedup. Non-goals: the sqlite-vector native extension (kept swappable behind one interface), network/API embeddings, record scoring or decay, and dedup of behaviors/shape/evidence.",
+  "behaviors": [
+    {
+      "id": "LB-19-B1",
+      "title": "Embed text locally and offline with a stable-within-tolerance contract",
+      "trigger": "Any indexed write or search asks to embed a text and the pinned model is installed",
+      "expected": "The @huggingface/transformers package pinned to 4.2.0, forced to the onnxruntime-web wasm CPU execution provider (device 'wasm', allowRemoteModels false), running the Xenova/all-MiniLM-L6-v2 model whose revision and per-file SHA256 are pinned in a committed model lockfile, returns a 384-dimension L2-normalized vector with no network call, resolving the model only from the loopbreaker-managed cache at .loopbreaker/models; the same text embedded in separate fresh processes yields vectors whose cosine similarity is at least 0.9999 (portable determinism defined as tolerance, not byte-identity); when the model is absent from the cache the layer reports absent and never throws or reaches the network",
+      "verify": "Embed one fixture text in two separate processes offline (network disabled) and observe cosine similarity >= 0.9999 and the exact dimension, then run with the model cache removed and observe a clean absent signal rather than an error or a network fetch"
+    },
+    {
+      "id": "LB-19-B2",
+      "title": "Persist and search a model-tagged global vector index",
+      "trigger": "An embedded record is stored, or a cosine search runs over the corpus",
+      "expected": "Embeddings persist as float32 BLOBs keyed by record type and id and tagged with the model identity; cosine search returns matches across all issues ranked by similarity; vectors whose stored model identity differs from the active model are treated as absent (recomputed) rather than compared across models",
+      "verify": "Insert known vectors, query and observe correctly ranked cosine matches, then flip the active model identity and observe stale-model vectors are ignored"
+    },
+    {
+      "id": "LB-19-B3",
+      "title": "Prevent duplicate issues by preflight, and link any written duplicate",
+      "trigger": "A filer runs the issue preflight before creating, or an issue contract is imported while the index is enabled",
+      "expected": "A read-only preflight search over the global issue index returns existing issues above the configured threshold (id and score) so the filer reuses one instead of importing a new issue; the import itself stays nonblocking and always completes, but when it persists an issue that matches an existing one above threshold it records an advisory duplicate_of linkage (new issue id to matched issue id with score) and returns the match, so a duplicate written without the preflight is recognized and mergeable rather than silently accumulating",
+      "verify": "Run the preflight for a near-identical issue and observe the existing issue returned above threshold; then import it anyway and observe the import completes and a duplicate_of linkage to the prior issue is recorded; run the preflight and import for a wholly distinct issue and observe no match and no linkage"
+    },
+    {
+      "id": "LB-19-B4",
+      "title": "Prevent duplicate findings by preflight, and link any written duplicate",
+      "trigger": "An agent runs the finding preflight before upserting, or a review or planning finding is upserted while the index is enabled",
+      "expected": "A read-only preflight search over the global finding index returns cross-issue findings above the threshold (issue id, finding id, score) so the agent reuses a prior finding id instead of creating a new one; the upsert itself stays nonblocking and always completes, but when it persists a finding matching an existing one above threshold it records an advisory duplicate_of linkage (new finding id to matched finding id with score) and returns the match",
+      "verify": "Run the preflight for a near-identical finding in a second issue and observe the prior finding returned above threshold; then upsert it anyway and observe the upsert completes and a duplicate_of linkage is recorded; run the preflight and upsert for a distinct finding and observe no match and no linkage"
+    },
+    {
+      "id": "LB-19-B5",
+      "title": "Expose a read-only similarity search on CLI and MCP",
+      "trigger": "A builder runs the search CLI or an agent calls the dedup search MCP tool with a query text",
+      "expected": "Both surfaces return the same ranked matches over issues and findings for the query, read-only, mutating nothing, and both report an explicit empty result when the index is disabled or the model is absent",
+      "verify": "Run the built CLI search and a real MCP handshake calling the search tool against one fixture corpus and observe identical ranked results, plus an explicit empty result with the model removed"
+    },
+    {
+      "id": "LB-19-B6",
+      "title": "Stay reversible, backfill the historical corpus, and degrade instead of failing",
+      "trigger": "The index flag is disabled, the model is absent, an existing database migrates, or an idempotent backfill runs",
+      "expected": "A single flag disables all indexing, dedup, and index reads so issues and findings write exactly as they do today; when the model is absent every dedup and search path returns no matches and never errors or blocks a write; the vector table is created idempotently; and an idempotent, resumable, model-tagged backfill embeds pre-existing issues, findings, and planning findings from their source text so records that predate the feature become discoverable by preflight, dedup, and search, re-running only unindexed or stale-model rows",
+      "verify": "Disable the flag and observe writes take no index side effects; remove the model and observe writes still succeed with empty matches; run the backfill on a database of pre-existing unindexed records and observe an old record is discoverable by search afterward and that a second backfill run embeds nothing further; and run the full suite plus a migration fixture and observe no regression to existing review, shipping, or bounded-pass semantics"
+    }
+  ],
+  "planning": {
+    "outcome": "Before creating an issue or finding, a filer or agent can find an existing match and reuse it; any duplicate written without that preflight is linked to its match so it is recognized and mergeable; matches span the whole corpus including records that predate the feature; and the path is offline and nonblocking.",
+    "appetite": "One focused slice: a local embedding layer, a model-tagged BLOB vector index with cosine search, dedup surfacing at issue-import and finding-upsert, a read-only search on CLI and MCP, and a disable flag with graceful degradation.",
+    "non_goals": [
+      "The sqlite-vector native extension; the vector store stays behind one interface so it can be swapped in later only if scale demands it",
+      "Network or API embeddings; the model is a one-time local fetch then fully offline",
+      "Record maturity, helpful/harmful scoring, or time-decay",
+      "Dedup of behaviors, shape, planning entries, or evidence",
+      "Auto-merging, auto-closing, or blocking any issue or finding write"
+    ],
+    "work_units": [
+      {
+        "id": "embedding-and-index",
+        "title": "Local embedding layer and model-tagged vector index",
+        "behavior_ids": ["LB-19-B1", "LB-19-B2"],
+        "done_when": "Deterministic offline embedding and cosine search over model-tagged float32 BLOBs work on a real database, with stale-model and absent-model paths covered."
+      },
+      {
+        "id": "write-dedup",
+        "title": "Preflight prevention and duplicate_of linkage at issue-import and finding-upsert",
+        "behavior_ids": ["LB-19-B3", "LB-19-B4"],
+        "done_when": "Preflight search returns above-threshold matches before a write, both writes stay nonblocking and record a duplicate_of linkage when they persist a match, verified with near-identical and distinct fixtures."
+      },
+      {
+        "id": "search-surface",
+        "title": "Read-only similarity search on CLI and MCP (the preflight primitive)",
+        "behavior_ids": ["LB-19-B5"],
+        "done_when": "CLI and a real MCP handshake return identical ranked matches and an explicit empty result when disabled or model-absent."
+      },
+      {
+        "id": "reversibility-and-backfill",
+        "title": "Disable flag, historical backfill, graceful degradation, and migration safety",
+        "behavior_ids": ["LB-19-B6"],
+        "done_when": "The flag makes indexing inert, an idempotent model-tagged backfill makes pre-existing records discoverable, model-absence never errors or blocks, and the full suite plus migration fixture pass unchanged."
+      }
+    ],
+    "proofs": [
+      { "behavior_id": "LB-19-B1", "tier": "wired", "method": "With the CI-warmed model cache and network disabled, embed a fixture text in two separate processes and assert cosine >= 0.9999 and exact dimension, then remove the cache and assert a clean absent signal with no network fetch." },
+      { "behavior_id": "LB-19-B2", "tier": "wired", "method": "Insert known model-tagged vectors, assert ranked cosine matches, and flip the active model identity to assert stale-model vectors are ignored." },
+      { "behavior_id": "LB-19-B3", "tier": "wired", "method": "Run the issue preflight for a near-identical and a distinct issue, then import each through the built CLI and assert the duplicate_of linkage is recorded only for the match while both imports complete." },
+      { "behavior_id": "LB-19-B4", "tier": "wired", "method": "Run the finding preflight and upsert for near-identical findings across two issues and for a distinct finding, asserting the duplicate_of linkage only for the match while both upserts persist." },
+      { "behavior_id": "LB-19-B5", "tier": "live", "method": "Call the search on the built CLI and through a real MCP handshake and compare ranked results, including the model-absent empty case." },
+      { "behavior_id": "LB-19-B6", "tier": "wired", "method": "Exercise the disable flag, run the idempotent backfill on a pre-existing unindexed database and assert an old record becomes discoverable and a second run embeds nothing, the model-absent path, and a migration fixture through the full repository suite." }
+    ],
+    "production_wiring": "A local embedding module wraps @huggingface/transformers@4.2.0 with transformers.js env pinned to device 'wasm' (onnxruntime-web CPU execution provider; the transitive onnxruntime-node native backend is never loaded), env.allowRemoteModels=false, and env.cacheDir=.loopbreaker/models, running the Hugging Face repo Xenova/all-MiniLM-L6-v2. The model revision (a named commit) and each model file's SHA256 are recorded in a committed model lockfile at .loopbreaker/model.lock.json; install and CI verify the cache against that lock so the pin is reproducible and checkable without a hand-entered hash. `loopbreaker model install` fetches into .loopbreaker/models/Xenova/all-MiniLM-L6-v2 and writes or verifies the lockfile; `loopbreaker model install --from-file <dir-or-tarball>` performs the same from a local artifact for air-gapped installs. A model-tagged float32 BLOB vector table in the existing node:sqlite stores 384-dim embeddings and a duplicate_of linkage table records matches; the embedding search feeds the preflight, importContract, upsertFinding and upsertPlanningFinding (nonblocking linkage), and a read-only search on the CLI and bundled MCP server. All index behavior is gated by one flag, and an idempotent backfill embeds pre-existing records. CI runs `loopbreaker model install` once to warm the cache, then executes the B1 and B5 proofs with the network disabled (allowRemoteModels false), and a separate test removes .loopbreaker/models to exercise the model-absent path.",
+    "rollback": "Disable the index flag: importing and finding upsert behave exactly as today, no index is read or written, and the vector and linkage tables become inert; removing the model cache reclaims disk.",
+    "migration": "Create the vector and duplicate_of tables idempotently; existing issues and findings remain valid and are unindexed until the idempotent model-tagged backfill embeds them from their source text, after which they are discoverable by preflight, dedup, and search; no change to review, shipping, or bounded-pass semantics.",
+    "decision_owner": "b3nfreed@gmail.com (issue owner)",
+    "risks": [
+      {
+        "risk": "Semantic-on-by-default adds a model dependency that can be missing or fail in air-gapped installs.",
+        "mitigation": "Pin the model with a SHA256 checksum and an air-gapped from-file install, and degrade to no-dedup rather than erroring when the model is absent."
+      },
+      {
+        "risk": "Embedding drift across model versions makes stored vectors incomparable.",
+        "mitigation": "Tag every vector with the model identity and treat differing-model vectors as absent rather than comparing across versions."
+      },
+      {
+        "risk": "False-positive similarity conflates distinct issues or findings.",
+        "mitigation": "Surface matches as advisory candidates for confirmation with a conservative configurable threshold; never auto-merge or block a write; the duplicate_of linkage is reversible."
+      },
+      {
+        "risk": "The embedding runtime, model artifact, or CI fixture is unspecified, making proofs unrunnable or accidentally network-dependent.",
+        "mitigation": "Pin @huggingface/transformers@4.2.0 on the wasm CPU provider and the Xenova/all-MiniLM-L6-v2 revision plus per-file SHA256 in a committed .loopbreaker/model.lock.json; resolve only from .loopbreaker/models; provide `loopbreaker model install` and `--from-file` for air-gapped installs; and a CI step warms the cache once with the lock, then runs B1/B5 with network disabled plus a separate model-absent test."
+      }
+    ]
+  }
+}
