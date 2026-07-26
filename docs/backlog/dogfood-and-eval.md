@@ -414,3 +414,77 @@ The web ingress hardens it afterward; it is not a prerequisite.
 - `delivery_readiness` gaining discovery as the first ordered authority, ahead of shape.
 
 Existing issues are grandfathered, as LB-25's shape already provides for.
+
+---
+
+## 10. Landed: LB-21 and LB-27 (2026-07-25/26)
+
+Both phases are done. What follows is the outcome, including the parts that did not go to plan.
+
+### The demote number is 32 — and it included this plan's own author
+
+`demote --dry-run` over the real substrate reported **32 enforced behaviors verified on evidence
+loopbreaker never executed**: DEMO-1, LB-14, LB-15, LB-16, LB-18, LB-20, and LB-21's own four —
+the four this document recorded by hand, hours after arguing that hand-recorded evidence is the
+problem.
+
+After binding LB-21's behaviors to their harnesses and running them for real (five executions,
+exit 0, 3.4–8.3s each), the count fell to **28**, and those were applied.
+
+The resulting substrate is the honest picture:
+
+| | Before | After |
+|---|---|---|
+| `ship` | LB-16, LB-18 | — |
+| `ship_with_debt` | LB-21 | LB-21 |
+| `hold` | everything else | everything else, plus LB-16 and LB-18 |
+
+**LB-21 is the only issue in the substrate ever proven by execution.** Two issues that read `ship`
+for weeks now read `hold`, and they cannot recover until someone writes harnesses for them. That
+cost is real and is the point: the gate did not discover new bugs, it withdrew a claim that was
+never earned.
+
+### What the gate caught in its first hour
+
+- **The README's showcase demo.** The browser's "Add wired proof" button recorded an asserted
+  `wired`/`pass` row and verified on it — the exact injection this document opens by describing,
+  shipped in the product's own demo and documented as the thing to click. It now executes a
+  registered harness.
+- **LB-21's own wired fixture**, which used asserted evidence to reach the `verifyBehavior` write
+  site. It now proves.
+- **Six vacuous assertions in LB-27's harnesses**, written by the same author who had documented
+  that failure mode in `RED-BASELINE.md` an hour earlier. See that file.
+
+### Two design corrections that came from being wrong first
+
+**The exec surface.** The first proposal locked `harness_ref` to a vitest file under `test/wired/`.
+That makes the **live tier unreachable** — a live proof drives a real browser or a deployed target
+and cannot be a unit-runner invocation. Loopbreaker has three tiers; the proposal served two. The
+registry (`harnesses.json`, after rordi's `scripts/verify/INDEX.md`) replaced it: entries declare
+their own runner and tier, and live entries require an explicit opt-in.
+
+**The binding hole, and the freeze that exposed it.** `demote` revealed that LB-21 could not
+recover: its behaviors had harnesses but no `harness_ref`, and the contract froze at planning-review
+approval. Treating the ref as contractual leaves an approved issue permanently unprovable — so
+`loopbreaker bind` sets it outside the freeze, because the contract states *what must be true*
+while the ref only says *which runner proves it*.
+
+That immediately created a worse hole: a ref an agent can write means an agent can point any
+behavior at a harness that cannot fail. The fix is **two-way binding** — the behavior names the
+harness (data), and the registry entry names the behavior back in `proves` (code, visible in a
+diff). Fail-closed: no `proves`, no consent. One half is cheap and revocable; the other must survive
+review.
+
+This was the third time in one session that the contract freeze refused a convenient substitution —
+after the `web` trigger_type and the stage-zero binding. All three are talk material with the audit
+trail behind them.
+
+### Still open
+
+- **`prove` executes; `bind` is only half-guarded.** Consent constrains *which* behavior a harness
+  will prove, but a reviewer still has to notice that a `proves` entry is honest. Requiring a red
+  baseline per binding would close it mechanically — and is coupled to the warn-but-record decision
+  in a way that was not visible when that decision was made.
+- **LB-16 and LB-18 have no harnesses** and sit at `hold` with no path back.
+- **B6 still does not mount React**, so the visualizer proof asserts the mapping, not pixels.
+- **Stage zero (discovery) is designed but not built.** Section 9 stands as written.

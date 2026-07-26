@@ -58,6 +58,11 @@ Use **Record repair pass**. Review becomes complete, but shipping remains held.
 Then use **Add wired proof**. The behavior becomes verified and the disposition
 changes to ship. The two decisions never overwrite one another.
 
+**Add wired proof** now *executes* `DEMO-B3`'s registered harness and records the
+exit code. It used to record an asserted `wired`/`pass` row and verify on it —
+which is exactly the injection this project argues against, shipped in its own
+demo. The gate caught it the day the gate existed.
+
 The graph is inspectable but deliberately read-only: pan, zoom, focus, and
 select nodes to trace the contract, proof, findings, review budget, and ship
 decision. A WebSocket carries changes made by another CLI or MCP process into
@@ -182,6 +187,38 @@ blockers; `loopbreaker health ISSUE` is the structural surface and
 still cannot admit implementation until an independent bounded planning review
 records `approved`.
 
+## Evidence is executed, not asserted
+
+An enforced behavior can only be verified on a proof loopbreaker ran itself. The
+verdict comes from a harness exit code; nothing accepts an outcome from a caller.
+
+```sh
+node dist/cli.js harnesses                       # what is registered, and at which tier
+node dist/cli.js bind APP-42-B1 --harness my-h   # point a behavior at an entry
+node dist/cli.js prove APP-42-B1                 # run it; the exit code is the verdict
+node dist/cli.js demote --dry-run                # what was verified without ever executing
+```
+
+[harnesses.json](harnesses.json) is the registry. A behavior names an entry id,
+never a command, so the set of executable things is a reviewable file rather than
+an opaque string in a database. Each entry declares its own `tier`, which is what
+makes proof tier honest — typing `wired` no longer makes a proof wired.
+
+Binding takes two independent acts: the behavior names the harness (a data
+change) and the entry names the behavior back in `proves` (a code change that
+shows up in a diff). Without the second, a behavior could be pointed at a harness
+that cannot fail. An entry with no `proves` consents to nothing.
+
+`not_run` is the fail-closed default. A harness that could not execute records
+that fact and never verifies anything: failing to observe a pass is not the same
+as passing.
+
+`prove` rejects `--verdict` and `--tier` rather than ignoring them. A caller
+chooses *which* registered harness runs, never what the run concluded.
+
+Build a behavior's harness and prove it **red** against current HEAD before
+implementing. A harness that is green before the work exists proves nothing.
+
 ## The decision model
 
 Both planning review and implementation review are bounded to a two-plus-one budget:
@@ -241,7 +278,11 @@ loopbreaker plan-finding ISSUE ...  preserve one stable planning finding
 loopbreaker substrate ISSUE         inspect the complete substrate
 loopbreaker pass ISSUE ...          record pass 1, 2, or 3
 loopbreaker evidence ISSUE ...      attach proportionate proof
-loopbreaker verify BEHAVIOR ...     verify with passing evidence
+loopbreaker harnesses               list the registered verify harnesses
+loopbreaker bind BEHAVIOR ...       point a behavior at a registered harness
+loopbreaker prove BEHAVIOR          execute the harness and record the result
+loopbreaker demote --dry-run        report behaviors verified without execution
+loopbreaker verify BEHAVIOR ...     verify with executed passing evidence
 loopbreaker waive ISSUE ...         accept named debt
 loopbreaker serve                   run the visual view
 loopbreaker mcp                     run the stdio MCP server

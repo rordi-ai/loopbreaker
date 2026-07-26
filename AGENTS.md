@@ -32,3 +32,13 @@ The domain rules are non-negotiable:
   comprehensive, repair verification, and decision only. Neither has pass four.
 - Review completion and shipping readiness are separate facts.
 - Shipping requires every enforced behavior to be verified or explicitly waived.
+- Evidence is executed, never asserted. An enforced behavior can only be verified
+  on a proof loopbreaker ran itself (`loopbreaker prove`), whose verdict comes
+  from the harness exit code. `not_run` is the fail-closed default: failing to
+  observe a pass is never the same as passing.
+- A behavior's harness is bound in two directions. The behavior names a registry
+  entry (`loopbreaker bind`, outside the contract freeze) and the entry names the
+  behavior back in its `proves` list (a reviewed change to `harnesses.json`).
+  Neither half alone is sufficient.
+- Build a behavior's harness and prove it RED against current HEAD before
+  implementing. A harness that is green before the work exists proves nothing.
