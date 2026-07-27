@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -629,9 +629,29 @@ async function main(): Promise<void> {
   }
 }
 
+/**
+ * True when this module is the process entry point.
+ *
+ * argv[1] is resolved through realpath first: a globally installed `loopbreaker`
+ * is a SYMLINK into this dist file, so comparing the link path against
+ * import.meta.url never matched and `main()` silently never ran — the binary
+ * exited 0 having printed nothing. Found while installing the CLI for the
+ * agent-driven dry run.
+ */
+function isEntryPoint(): boolean {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  if (import.meta.url === pathToFileURL(argv1).href) return true;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(argv1)).href;
+  } catch {
+    return false;
+  }
+}
+
 // Only run as a script (`node dist/cli.js`, `tsx src/cli.ts`, the `loopbreaker` bin), never as a
 // side effect of importing this module -- e.g. from tests that call runHookCommand directly.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isEntryPoint()) {
   main().catch((error) => {
     const known = error instanceof DomainError;
     process.stdout.write(`${failure(known ? error.code : "internal_error", error instanceof Error ? error.message : String(error), known ? error.hint : undefined)}\n`);

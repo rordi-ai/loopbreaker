@@ -755,12 +755,14 @@ var BOOTSTRAP_NUDGE = [
   "",
   "Before implementing a feature, run the ordered pipeline rather than coding directly:",
   "",
-  "Use the loopbreaker MCP tools \u2014 they are always available through this plugin.",
-  "The `loopbreaker` CLI may not be installed on PATH; do not go looking for it.",
+  "Drive this with the `loopbreaker` CLI or the loopbreaker MCP tools; both are",
+  "available and act on the same substrate. If the CLI is not on PATH, use MCP",
+  "rather than searching the filesystem for it.",
   "",
-  "1. `review_import_contract` \u2014 create the issue and its behavior contract.",
-  "2. `delivery_link` \u2014 bind it. The admission gate is keyed to this binding;",
-  "   until it is set, source edits are refused.",
+  "1. `loopbreaker import FILE` (or `review_import_contract`) \u2014 create the issue",
+  "   and its behavior contract.",
+  "2. `loopbreaker link ISSUE` (or `delivery_link`) \u2014 bind it. The admission gate",
+  "   is keyed to this binding; until it is set, source edits are refused.",
   "3. `$discovery-interview` \u2014 the premise must come from a human. Never author a",
   "   shape field from your own head; interview for it, then the founder approves.",
   "4. `$shape-strategy` \u2192 `$plan-feature` \u2192 `$review-planning` until admitted.",
@@ -768,7 +770,8 @@ var BOOTSTRAP_NUDGE = [
   "   then implement and `loopbreaker prove` it green. Evidence is executed,",
   "   never asserted.",
   "",
-  "Call `delivery_readiness` at any point for the exact active gate."
+  "Run `loopbreaker readiness ISSUE` or call `delivery_readiness` at any point",
+  "for the exact active gate."
 ].join("\n");
 function bootstrapNudgeOutput() {
   return JSON.stringify({
@@ -812,7 +815,7 @@ function evaluatePreToolUse(db, event, repoRoot) {
     if (!activeIssue) {
       return {
         decision: "deny",
-        reason: "Loopbreaker governs this repository but no active issue is linked, so nothing is gated. Call the `delivery_link` MCP tool to bind one (create it first with `review_import_contract`), then establish the premise with $discovery-interview before editing source. Use the MCP tools rather than a `loopbreaker` CLI, which may not be on PATH."
+        reason: "Loopbreaker governs this repository but no active issue is linked, so nothing is gated. Run `loopbreaker link ISSUE` or call the `delivery_link` MCP tool to bind one (create it first with `loopbreaker import` or `review_import_contract`), then establish the premise with $discovery-interview before editing source."
       };
     }
     const state = substrate(db, activeIssue);

@@ -22,7 +22,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build:types": "node scripts/clean-types.mjs && tsc -p tsconfig.json",
+    "build:types": "node scripts/clean-types.mjs && tsc -p tsconfig.json && node -e \"require('fs').chmodSync('dist/cli.js', 0o755)\"",
     "build:web": "vite build --config web/vite.config.ts",
     "build:mcp": "esbuild src/plugin-mcp.ts --bundle --platform=node --format=esm --outfile=mcp/server.bundle.mjs --banner:js='#!/usr/bin/env node'",
     "build:hook": "esbuild src/plugin-hook.ts --bundle --platform=node --format=esm --outfile=mcp/hook.bundle.mjs --banner:js='#!/usr/bin/env node'",
