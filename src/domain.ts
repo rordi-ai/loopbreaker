@@ -912,13 +912,27 @@ export function recordDiscovery(db: LoopbreakerDb, issueId: string, answers: Dis
   return discoveryState(db, issueId);
 }
 
+/** Ingresses permitted to approve a premise. Only the browser: see approveDiscovery. */
+const APPROVAL_INGRESSES = new Set<string>(["web"]);
+
 /**
  * Approve a discovery record — the one act an agent must not be able to issue on
  * its own behalf.
  *
- * NAMED RESIDUAL RISK: until a `web` trigger_type exists, cli and web ingresses
- * are indistinguishable in provenance, so an in-session agent can invoke this.
- * The approval is attributable, not yet unforgeable. Stated rather than implied.
+ * ONLY the `web` ingress may approve. This is not fussiness; it was demonstrated
+ * live. In a dry run an agent offered "I'll approve on your behalf" as its first
+ * option, ran the CLI, and wrote the founder's name into `approved_by`. The
+ * record read `approved_by: "Ben (ben@rordi.ai)"` while provenance read
+ * `cli`/`ubuntu` — the agent's own shell. LB-25's shape had named exactly that:
+ * an attester that is a caller-supplied string lets an in-session agent "write
+ * its own answers, name the founder, and certify its own premise as
+ * founder-backed."
+ *
+ * `approved_by` is caller-supplied and therefore worthless as an authenticator;
+ * only the INGRESS is evidence. A founder's terminal and an agent's terminal are
+ * indistinguishable, so allowing `cli` at all reopens the hole — which is why
+ * the terminal route is refused even though it is less convenient. The browser
+ * is a channel the in-session agent does not hold.
  */
 export function approveDiscovery(db: LoopbreakerDb, issueId: string, approvedBy: string): DiscoveryState {
   const state = discoveryState(db, issueId);
@@ -929,6 +943,14 @@ export function approveDiscovery(db: LoopbreakerDb, issueId: string, approvedBy:
     throw new DomainError("discovery_grandfathered", `${issueId} predates the discovery gate and needs no approval.`);
   }
   if (!present(approvedBy)) throw new DomainError("missing_flag", "An approver must be named.", "Pass --by NAME.");
+  if (!APPROVAL_INGRESSES.has(db.provenance.trigger_type)) {
+    throw new DomainError(
+      "approval_ingress_refused",
+      `A premise cannot be approved through the ${db.provenance.trigger_type} ingress; only the browser may approve.`,
+      "Run `loopbreaker serve`, open http://127.0.0.1:7331 and press \"Approve the premise\". "
+        + "`approved_by` is a string any caller can type, so the ingress is the only real evidence a human acted.",
+    );
+  }
   db.raw.prepare(`
     UPDATE discovery_records
     SET status = 'approved', approved_by = ?, approved_at = CURRENT_TIMESTAMP,

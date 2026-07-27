@@ -218,3 +218,25 @@ export function missingProvenanceColumns(dbPath: string, table: string): string[
   const present = new Set(columnsOf(dbPath, table));
   return PROVENANCE_COLUMNS.filter((column) => !present.has(column));
 }
+
+/**
+ * Approve a discovery record the way a human does — through the browser.
+ *
+ * The CLI route is refused: approval is permitted only on the `web` ingress,
+ * because `approved_by` is a caller-supplied string and a founder's terminal is
+ * indistinguishable from an agent's. A dry-run agent proved that concretely by
+ * running the CLI and writing the founder's name into `approved_by`.
+ */
+export async function approveViaBrowser(dbPath: string, issueId: string, approvedBy: string): Promise<void> {
+  const serve = await withServeProcess(dbPath);
+  try {
+    const response = await fetch(new URL(`/api/issues/${encodeURIComponent(issueId)}/discovery/approve`, serve.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ approved_by: approvedBy }),
+    });
+    if (!response.ok) throw new Error(`browser approval failed: ${response.status} ${await response.text()}`);
+  } finally {
+    await serve.stop();
+  }
+}

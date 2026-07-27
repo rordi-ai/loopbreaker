@@ -8,7 +8,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { cliOk, makeWorkspace, readDb, requireBuild, rowsOf, runCli, type Workspace } from "./harness.js";
+import { cliOk, makeWorkspace, readDb, requireBuild, rowsOf, runCli, type Workspace, approveViaBrowser } from "./harness.js";
 import { importAndShape, writeDiscovery } from "./lb-28-fixture.js";
 
 describe("LB-28-B4 · grandfathering and ordered authority", () => {
@@ -70,7 +70,7 @@ describe("LB-28-B4 · grandfathering and ordered authority", () => {
 
   it("hands the gate to shape once discovery is approved", async () => {
     await cliOk(["discover", "POST-1", writeDiscovery(workspace, "POST-1")], { db: workspace.db });
-    await cliOk(["discover", "POST-1", "--approve", "--by", "ben@rordi.ai"], { db: workspace.db });
+    await approveViaBrowser(workspace.db, "POST-1", "ben@rordi.ai");
     const result = await runCli(["readiness", "POST-1"], { db: workspace.db });
     expect(result.stdout, "discovery still holds after approval").not.toMatch(/gate: discovery/);
   });

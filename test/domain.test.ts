@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { LoopbreakerDb } from "../src/db.js";
-import { createWaiver, DomainError, importContract, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertFinding, upsertPlanningFinding, verifyBehavior, DISCOVERY_FIELDS, approveDiscovery, recordDiscovery } from "../src/domain.js";
+import { createWaiver, DomainError, importContract, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertFinding, upsertPlanningFinding, verifyBehavior, DISCOVERY_FIELDS, approveDiscovery, discoveryState, recordDiscovery } from "../src/domain.js";
 import type { PlanningProfile, ShapeProfile } from "../src/types.js";
 import { DEMO_ISSUE, seedDemo } from "../src/seed.js";
 
@@ -22,7 +22,14 @@ function satisfyDiscovery(db: LoopbreakerDb, issueId: string): void {
     question: `What is the ${field}?`,
     answer: `Fixture answer for ${field}.`,
   })));
-  approveDiscovery(db, issueId, "fixture-founder");
+  // Fixture privilege, mirroring seedDemo: write the approved state directly
+  // rather than paying the ingress round-trip. Approval is refused on any
+  // ingress but `web`, and opening a second browser-ingress handle per fixture
+  // thrashes the WAL lock. The ingress RULE has its own dedicated test; these
+  // fixtures only need the resulting state.
+  db.raw.prepare(
+    "UPDATE discovery_records SET status = 'approved', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE issue_id = ?",
+  ).run("fixture-founder", issueId);
 }
 
 
@@ -142,6 +149,34 @@ describe("bounded review and shipping authority", () => {
     }).evidence.at(-1)!;
     expect(() => verifyBehavior(db, "DEMO-B3", executedUnit.id)).toThrowError(/Unit evidence alone/);
     expect(substrate(db, DEMO_ISSUE).shipping.disposition).toBe("hold");
+  });
+
+  it("refuses to approve a premise through an agent-reachable ingress", () => {
+    // Demonstrated live in a dry run: an agent offered "I'll approve on your
+    // behalf", ran the CLI, and wrote the founder's name into approved_by. The
+    // record read approved_by: "Ben (ben@rordi.ai)" while provenance read
+    // cli/ubuntu -- its own shell. approved_by is caller-supplied and therefore
+    // worthless as an authenticator; only the ingress is evidence.
+    const db = database();
+    importContract(db, {
+      issueId: "APPROVE-1", title: "Ingress rule",
+      behaviors: [{ id: "APPROVE-1-B1", title: "Do it", trigger: "t", expected: "e", verify: "v" }],
+    });
+    recordDiscovery(db, "APPROVE-1", DISCOVERY_FIELDS.map((field) => ({
+      field, question: `What is the ${field}?`, answer: `Answer for ${field}.`,
+    })));
+
+    // `database()` opens a cli-ingress handle -- exactly what an agent holds.
+    expect(() => approveDiscovery(db, "APPROVE-1", "Ben (ben@rordi.ai)"))
+      .toThrowError(/only the browser may approve/);
+    expect(discoveryState(db, "APPROVE-1").status).toBe("draft");
+
+    const browser = new LoopbreakerDb(db.path, { trigger_type: "web", triggered_by: "browser", trigger_data: null });
+    try {
+      expect(approveDiscovery(browser, "APPROVE-1", "Ben").status).toBe("approved");
+    } finally {
+      browser.close();
+    }
   });
 
   it("does not let asserted evidence verify an enforced behavior", () => {

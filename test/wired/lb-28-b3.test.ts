@@ -9,7 +9,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { cliOk, columnsOf, makeWorkspace, requireBuild, rowsOf, runCli, type Workspace } from "./harness.js";
+import { cliOk, columnsOf, makeWorkspace, requireBuild, rowsOf, runCli, type Workspace, approveViaBrowser } from "./harness.js";
 import { importAndShape, writeDiscovery } from "./lb-28-fixture.js";
 
 function record(dbPath: string, issueId: string): Record<string, unknown> | undefined {
@@ -45,13 +45,23 @@ describe("LB-28-B3 · approval is a separate attributable act", () => {
       .toMatch(/--by|approver|approved_by/);
   });
 
-  it("records who approved it and when", async () => {
-    const approved = await runCli(["discover", "APPR-1", "--approve", "--by", "ben@rordi.ai"], { db: workspace.db });
-    expect(approved.code, `approve exited ${approved.code}: ${approved.stderr}`).toBe(0);
+  it("refuses to approve through the CLI, the ingress an agent holds", async () => {
+    // A dry-run agent offered "I'll approve on your behalf", ran exactly this
+    // command, and wrote the founder's name into approved_by. approved_by is
+    // caller-supplied; only the ingress is evidence a human acted.
+    const result = await runCli(["discover", "APPR-1", "--approve", "--by", "ben@rordi.ai"], { db: workspace.db });
+    expect(result.code, "the CLI approved a premise").not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain("only the browser may approve");
+    expect(record(workspace.db, "APPR-1")?.status, "the record was approved anyway").toBe("draft");
+  });
+
+  it("records who approved it and when, through the browser", async () => {
+    await approveViaBrowser(workspace.db, "APPR-1", "ben@rordi.ai");
     const row = record(workspace.db, "APPR-1");
     expect(row?.status).toBe("approved");
     expect(row?.approved_by).toBe("ben@rordi.ai");
     expect(String(row?.approved_at ?? ""), "no approval timestamp").not.toBe("");
+    expect(row?.trigger_type, "the approval is not attributable to the browser").toBe("web");
   });
 
   it("stamps the ingress that issued the approval", () => {

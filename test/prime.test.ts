@@ -23,7 +23,14 @@ function satisfyDiscovery(db: LoopbreakerDb, issueId: string): void {
     question: `What is the ${field}?`,
     answer: `Fixture answer for ${field}.`,
   })));
-  approveDiscovery(db, issueId, "fixture-founder");
+  // Fixture privilege, mirroring seedDemo: write the approved state directly
+  // rather than paying the ingress round-trip. Approval is refused on any
+  // ingress but `web`, and opening a second browser-ingress handle per fixture
+  // thrashes the WAL lock. The ingress RULE has its own dedicated test; these
+  // fixtures only need the resulting state.
+  db.raw.prepare(
+    "UPDATE discovery_records SET status = 'approved', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE issue_id = ?",
+  ).run("fixture-founder", issueId);
 }
 
 

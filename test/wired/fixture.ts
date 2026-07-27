@@ -11,7 +11,7 @@
 
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { cliOk, readDb, withMcp, ROOT, type Workspace } from "./harness.js";
+import { cliOk, readDb, withMcp, ROOT, type Workspace, approveViaBrowser } from "./harness.js";
 
 export const FIXTURE_ISSUE = "WIRED-1";
 
@@ -78,7 +78,7 @@ export async function driveAllWriters(workspace: Workspace): Promise<DrivenFixtu
     })),
   }));
   await cliOk(["discover", FIXTURE_ISSUE, discoveryPath], { db });
-  await cliOk(["discover", FIXTURE_ISSUE, "--approve", "--by", "fixture-founder"], { db });
+  await approveViaBrowser(db, FIXTURE_ISSUE, "fixture-founder");
   // 2. shape_assessments
   await cliOk(["shape", FIXTURE_ISSUE, shapePath], { db });
   // 3. planning_profiles, explicitly through the plan writer

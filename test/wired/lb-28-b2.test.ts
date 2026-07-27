@@ -8,7 +8,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { cliOk, makeWorkspace, requireBuild, runCli, type Workspace } from "./harness.js";
+import { cliOk, makeWorkspace, requireBuild, runCli, type Workspace, approveViaBrowser } from "./harness.js";
 import { importAndShape, writeDiscovery } from "./lb-28-fixture.js";
 
 describe("LB-28-B2 · the gate holds shape until discovery is approved", () => {
@@ -37,7 +37,7 @@ describe("LB-28-B2 · the gate holds shape until discovery is approved", () => {
   });
 
   it("opens once the record is approved", async () => {
-    await cliOk(["discover", "GATE-A", "--approve", "--by", "ben@rordi.ai"], { db: workspace.db });
+    await approveViaBrowser(workspace.db, "GATE-A", "ben@rordi.ai");
     const result = await runCli(["readiness", "GATE-A"], { db: workspace.db });
     expect(result.code).toBe(0);
     expect(result.stdout, "an approved record did not open the shape gate").not.toMatch(/missing_discovery|unapproved_discovery/);
