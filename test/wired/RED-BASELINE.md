@@ -170,3 +170,40 @@ author within an hour of documenting it. The discipline caught it; unexamined gr
 Five further tests were **skipped** rather than failed, because B6's `beforeAll` threw on the absent
 `prove` command. A skipped test is not a recorded red — it is an absence of evidence in either
 direction — so the setup was made tolerant so every assertion runs and fails on its own merits.
+
+---
+
+# LB-28 discovery gate
+
+Red recorded **2026-07-26** against `233236b`: **19 failed · 0 passed · 0 skipped** across four
+harnesses. Green after implementation: **19/19**.
+
+Reaching a clean red took three corrections, all the same defect in different clothes:
+
+- One assertion passed vacuously — `not.toContain("missing_discovery")` is trivially true while the
+  blocker code does not exist. Fixed by requiring the grandfather row as a precondition.
+- One passed on an unknown-command exit rather than the reason under test. Fixed by asserting the
+  refusal names the missing approver.
+- Five were **skipped**, not failed, because a `beforeAll` threw on the absent command. A skipped
+  test records no red. Fixed by making the setup tolerant so every assertion runs on its own merits.
+
+## The bug the red baseline caught
+
+The grandfather sweep initially ran on **every** `migrate()`, so an issue shaped after the gate was
+silently exempted on the next command — grandfathering would have become a permanent bypass and the
+gate would have enforced nothing. Caught by the harness asserting a post-gate issue is *not* in the
+cohort. It now runs only on the migration that introduces the tables.
+
+# LB-29 web ingress
+
+Red recorded **2026-07-26** against `6b7cd8d`: **3 failed · 2 passed**. One of the two passes was
+vacuous — a 404 satisfies "the response is not ok" while the route does not exist — so the assertion
+now requires a 400 rejection rather than merely a failure. Green after implementation: **5/5**.
+
+`LB-21-B2` was re-proven by execution after its enumeration was superseded, rather than left
+carrying a verdict for a contract that no longer held.
+
+## Running total
+
+`pnpm test:wired` → **92 passed · 1 failed (93)**. The single failure is LB-21-B4's raw-write source
+scan, waived as named debt for `src/seed.ts`.

@@ -479,12 +479,92 @@ This was the third time in one session that the contract freeze refused a conven
 after the `web` trigger_type and the stage-zero binding. All three are talk material with the audit
 trail behind them.
 
-### Still open
+### Still open after section 10
 
-- **`prove` executes; `bind` is only half-guarded.** Consent constrains *which* behavior a harness
-  will prove, but a reviewer still has to notice that a `proves` entry is honest. Requiring a red
-  baseline per binding would close it mechanically — and is coupled to the warn-but-record decision
-  in a way that was not visible when that decision was made.
-- **LB-16 and LB-18 have no harnesses** and sit at `hold` with no path back.
+- **`bind` is guarded by review, not mechanically.** Consent constrains which behavior a harness
+  will prove, but a reviewer still has to notice a `proves` entry is honest. Requiring a red
+  baseline per binding would close it mechanically. Worth keeping in proportion: "someone could
+  commit a convincing fake test" is true of every repository with a test suite, and two-way binding
+  already makes it a reviewed change rather than a silent one.
+- **LB-16 and LB-18 have no harnesses** and sit at `hold` with no path back until someone writes
+  them.
 - **B6 still does not mount React**, so the visualizer proof asserts the mapping, not pixels.
-- **Stage zero (discovery) is designed but not built.** Section 9 stands as written.
+
+---
+
+## 11. Landed: LB-28 and LB-29 — the top of the pipe (2026-07-26)
+
+Section 9 described stage zero as a design. It is built. Both ends of the pipe are now closed:
+an unchecked premise in (LB-28) and an unchecked verdict out (LB-27).
+
+### The pipeline
+
+| Authority | State |
+|---|---|
+| 0. Discovery | **mechanical** — shape cannot reach `proceed` without a founder-approved record |
+| 1. Shape | mechanical |
+| 2. Planning health | mechanical |
+| 3. Planning review | mechanical, bounded to three passes |
+| 4. Implementation admission | mechanical, via the PreToolUse hook |
+| 5. Evidence | **executed**, no longer asserted |
+| 6. Ship | mechanical |
+
+Seven skills, eighteen MCP tools. `discovery_record` and `discovery_state` are agent-facing;
+there is deliberately **no approval tool on MCP**, and `verify-mcp` asserts that absence so it
+cannot be added by accident.
+
+### The correction that mattered most was to a skill, not to code
+
+`shape-strategy` says "batch at most four independent questions." Memory had this recorded as the
+licensing defect behind LB-20's invented premise. It was not. It is an **initiative-grain rule that
+was being applied at issue grain** — precisely the split Rordi encodes in interview migration 0147
+(initiative gets one batched ask; epic gets the exhaustive walk).
+
+With `discovery-interview` above it, the sentence becomes correct, and `shape-strategy`'s job
+becomes *projecting* an approved premise into shape fields rather than inventing one. The LB-25 root
+cause is retired by restructuring, not by adding a check. Nothing about the original sentence needed
+changing; what was missing was a stage above it.
+
+### A real bug the harnesses caught
+
+The grandfather sweep initially ran on **every** `migrate()`. Any issue shaped after the gate was
+silently exempted on the next command, which would have turned grandfathering into a permanent
+bypass — the gate would have existed and enforced nothing. It is now guarded to the migration that
+introduces the tables, and the cohort is recorded as data so who was exempted is inspectable.
+
+### LB-29, and what it does not do
+
+Approval moved to the browser because the CLI was too awkward to actually use. `serve` now opens its
+own handle declaring a fifth `web` ingress, so browser writes stop being misattributed to the
+terminal that launched the server, and the visualizer shows **Approve the premise** on any issue held
+at discovery.
+
+**It is attribution, not prevention**, and this is stated in the code, the harness and the README.
+An agent with a shell can `curl` that endpoint as easily as it can run the CLI. `web` records which
+channel a write came through, not that a human was behind it. Closing it needs the out-of-band
+one-time token LB-25's shape specifies, which is not built. An earlier version of this plan implied
+the web ingress *was* the fix; it is not, and shipping it as one would have been the overclaim this
+whole document is about.
+
+### Third supersession, handled out loud
+
+LB-21-B2's contract fixed `trigger_type` to exactly `cli | mcp | hook | plugin_hook`. Correct when
+written — the server inherited the CLI's handle, so the distinction did not exist. LB-29 adds a
+fifth value, so the harness now admits `web` with the reason inline, and **LB-21-B2 was re-proven by
+execution** rather than left carrying a verdict from a contract that no longer holds.
+
+That is three times the frozen contract has refused a convenient substitution: the `web` trigger
+type, the stage-zero binding, and `harness_ref`. Each time the workaround was a new issue, a named
+waiver, or a recorded supersession — never a quiet edit.
+
+## 12. What the eval can now claim
+
+| Claim | Status |
+|---|---|
+| Bounding stops review loops | **Measurable.** LB-21's own history: two `changes_required` passes on a genuine mutation-inventory inconsistency, converging at pass 3, no pass 4. |
+| Gates catch real defects | **Measurable.** The same finding, scored against ground truth — an eight-vs-ten table inconsistency a diff reading would not surface. |
+| Cost and honesty of the verdict | **Measured.** `demote --dry-run` reported 32; LB-21 recovered 4 by real execution; 28 were applied. Two issues that read `ship` for weeks now read `hold`. |
+| Premise gate catches injection | **Demonstrable, not measured.** The gate is built and the LB-20 incident is the documented instance, but no negative control has been run. |
+
+Not yet built: the labeled corpus, both arms, and the false-ship rate.
+`/data/projects/rordi-eval-sandbox` is the disposability pattern to reuse.
