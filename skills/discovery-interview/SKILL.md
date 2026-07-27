@@ -113,7 +113,26 @@ Transcribe what the human said. Do not improve it, summarise away its hedges, or
 fill a thin answer with your own reasoning — a smoothed answer is an invented
 one wearing the founder's name.
 
-The record lands as a **draft**. You cannot approve it:
+The record lands as a **draft**, and you cannot approve it. Do not simply say so
+and stop — that leaves the founder as the blocker without telling them they are
+one. **Cue the approval up:**
+
+1. Start the visualizer if it is not already running, in the background so it
+   does not block your turn:
+
+   ```sh
+   loopbreaker serve &
+   ```
+
+2. Hand over the link and what to click, in one line:
+
+   > Premise recorded for ISSUE. Approve it at http://127.0.0.1:7331 — select the
+   > issue and press **Approve the premise**. Nothing proceeds until you do.
+
+3. Stop and wait. Do not shape, plan, or edit source while the record is a
+   draft; the gate will refuse it anyway.
+
+The CLI fallback exists for a founder already in a terminal:
 
 ```sh
 loopbreaker discover ISSUE --approve --by NAME    # the human runs this

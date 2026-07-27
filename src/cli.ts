@@ -534,7 +534,17 @@ async function main(): Promise<void> {
         }
         return { field: entry.field, question: entry.question, answer: entry.answer };
       });
-      output(recordDiscovery(db, issueId, answers), db, [`loopbreaker discover ${issueId} --approve --by NAME`]);
+      const recorded = recordDiscovery(db, issueId, answers);
+      // The approval is the one act a human must perform, and it was the least
+      // discoverable thing in the pipeline: an agent recorded a draft and the
+      // founder had to infer from prose that they were now the blocker. Surface
+      // the browser route first -- it is the ergonomic one -- with the CLI as
+      // the fallback for anyone already in a terminal.
+      output({ ...recorded, approval: {
+        needed: true,
+        browser: `loopbreaker serve  ->  http://127.0.0.1:7331  ->  "Approve the premise"`,
+        cli: `loopbreaker discover ${issueId} --approve --by NAME`,
+      } }, db, ["loopbreaker serve", `loopbreaker discover ${issueId} --approve --by NAME`]);
       return;
     }
     if (command === "harnesses") {
