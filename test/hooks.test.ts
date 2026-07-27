@@ -112,9 +112,19 @@ describe("runSessionStartHook", () => {
     expect(parsed.hookSpecificOutput.additionalContext).toBe(renderPrime(composePrime(db, "HOOK-1")));
   });
 
-  it("emits nothing when no issue is linked", () => {
+  it("emits the bootstrap nudge when no issue is linked", () => {
+    // SUPERSEDES LB-18-B3's "no active issue -> no context". That silence made
+    // the plugin inert and invisible: an observed session with all tools and
+    // skills loaded went straight to coding, never learning the pipeline
+    // existed. Silence remains correct for PERMISSION and is wrong for
+    // ORIENTATION, so session-start now orients while gating nothing.
     const db = database();
-    expect(runSessionStartHook(db, { hook_event_name: "SessionStart" })).toBe("");
+    const output = JSON.parse(runSessionStartHook(db, { hook_event_name: "SessionStart" }));
+    const context = output.hookSpecificOutput.additionalContext as string;
+    expect(output.hookSpecificOutput.hookEventName).toBe("SessionStart");
+    expect(context).toContain("delivery_link");
+    expect(context).toContain("discovery-interview");
+    expect(context, "the nudge must not claim a gate is being enforced").toContain("no gate is currently enforced");
   });
 
   it("emits nothing and never throws on unparseable/garbage event input", () => {
@@ -227,13 +237,23 @@ describe("evaluatePreToolUse", () => {
     expect(decision).toEqual({ decision: "allow" });
   });
 
-  it("allows an in-repo edit when no issue is linked at all", () => {
+  it("denies an in-repo edit when a governed repo has no issue linked", () => {
     const db = database();
     blockedIssue(db, "GATE-10");
     // No setActiveIssue call: no linked issue.
 
+    // SUPERSEDES LB-18-B4's "no active issue -> allow". Allowing made the whole
+    // pipeline opt-in by an agent with no incentive to opt in: two observed
+    // sessions with every tool, skill and the bootstrap nudge loaded edited
+    // source directly and never mentioned loopbreaker. Advisory text loses to a
+    // direct user request; only a gate changes behaviour.
+    //
+    // Fail-open is preserved where it matters: this path is only reached when a
+    // database already exists for the repository, which is unambiguous evidence
+    // it is governed. A repo that never ran `loopbreaker init` is untouched.
     const decision = evaluatePreToolUse(db, edit({ file_path: "/repo/src/app.ts" }), repoRoot);
-    expect(decision).toEqual({ decision: "allow" });
+    expect(decision.decision).toBe("deny");
+    expect(decision.reason).toContain("delivery_link");
   });
 });
 
@@ -285,10 +305,11 @@ describe("runHookCommand (full session-start/pre-tool-use wiring, in-process)", 
     expect(parsed.hookSpecificOutput.additionalContext).toBe(renderPrime(composePrime(db, "APP-42")));
   });
 
-  it("session-start emits nothing in a repository with a database but no active-issue binding", () => {
+  it("session-start emits the bootstrap nudge in a repository with a database but no active-issue binding", () => {
     const { db, dir } = repoDatabase();
     const event = JSON.stringify({ hook_event_name: "SessionStart", cwd: dir });
-    expect(runHookCommand("session-start", event, db)).toBe("");
+    const context = JSON.parse(runHookCommand("session-start", event, db)).hookSpecificOutput.additionalContext;
+    expect(context).toContain("delivery_link");
   });
 
   it("session-start emits nothing on corrupt stdin JSON with no active issue", () => {

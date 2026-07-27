@@ -35,17 +35,61 @@ function isWithin(parent: string, child: string): boolean {
 }
 
 /**
- * Compose the single deterministic prime block for the linked active issue
- * as SessionStart hook output. Pure aside from reading the database; never
- * throws. Returns the empty string when there is no active issue, the issue
- * is unknown, or anything else goes wrong -- signaling "emit no context" to
- * the thin CLI wrapper.
+ * The bootstrap nudge, emitted when loopbreaker is installed but no issue is
+ * linked.
+ *
+ * Without this the plugin is INERT AND INVISIBLE: the admission hook fails open
+ * with no binding, the prime block has nothing to say, and an agent handed a
+ * feature request goes straight to coding having never learned the pipeline
+ * exists. That was observed directly -- a real session with all 18 tools and 7
+ * skills loaded mentioned loopbreaker zero times.
+ *
+ * Advisory only. It never gates; it orients. Silence is the right answer for
+ * PERMISSION when nothing is linked, and the wrong answer for ORIENTATION.
+ */
+const BOOTSTRAP_NUDGE = [
+  "# Loopbreaker governs delivery in this repository",
+  "",
+  "No active issue is linked, so no gate is currently enforced.",
+  "",
+  "Before implementing a feature, run the ordered pipeline rather than coding directly:",
+  "",
+  "Use the loopbreaker MCP tools — they are always available through this plugin.",
+  "The `loopbreaker` CLI may not be installed on PATH; do not go looking for it.",
+  "",
+  "1. `review_import_contract` — create the issue and its behavior contract.",
+  "2. `delivery_link` — bind it. The admission gate is keyed to this binding;",
+  "   until it is set, source edits are refused.",
+  "3. `$discovery-interview` — the premise must come from a human. Never author a",
+  "   shape field from your own head; interview for it, then the founder approves.",
+  "4. `$shape-strategy` → `$plan-feature` → `$review-planning` until admitted.",
+  "5. `$implement-feature` — write each behavior's harness FIRST, prove it red,",
+  "   then implement and `loopbreaker prove` it green. Evidence is executed,",
+  "   never asserted.",
+  "",
+  "Call `delivery_readiness` at any point for the exact active gate.",
+].join("\n");
+
+/** The bootstrap nudge as a SessionStart hook payload, for callers with no database to read. */
+export function bootstrapNudgeOutput(): string {
+  return JSON.stringify({
+    hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: BOOTSTRAP_NUDGE },
+  });
+}
+
+/**
+ * Compose the SessionStart hook output: the deterministic prime block for the
+ * linked active issue, or the bootstrap nudge when nothing is linked. Pure
+ * aside from reading the database; never throws.
  */
 export function runSessionStartHook(db: LoopbreakerDb, _event: unknown): string {
   try {
     const activeIssue = db.activeIssue();
-    if (!activeIssue) return "";
-    if (!db.issue(activeIssue)) return "";
+    if (!activeIssue || !db.issue(activeIssue)) {
+      return JSON.stringify({
+        hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: BOOTSTRAP_NUDGE },
+      });
+    }
     const block = composePrime(db, activeIssue);
     return JSON.stringify({
       hookSpecificOutput: {
@@ -98,7 +142,27 @@ export function evaluatePreToolUse(db: LoopbreakerDb, event: HookEvent, repoRoot
     if (!deniableTarget) return { decision: "allow" };
 
     const activeIssue = db.activeIssue();
-    if (!activeIssue) return { decision: "allow" };
+    if (!activeIssue) {
+      // SUPERSEDES LB-18-B4's "no active issue -> allow".
+      //
+      // Allowing here made the whole pipeline opt-in by an agent with no
+      // incentive to opt in. Observed directly: two sessions with every tool,
+      // skill and the bootstrap nudge loaded went straight to editing source
+      // and never mentioned loopbreaker once. Orientation is advisory and loses
+      // to a direct user request; only a gate changes behaviour.
+      //
+      // Fail-open is preserved where it matters: this function is only reached
+      // when a database already EXISTS for this repository, which is
+      // unambiguous evidence the repo is governed. A repo that never ran
+      // `loopbreaker init` is never touched.
+      return {
+        decision: "deny",
+        reason: "Loopbreaker governs this repository but no active issue is linked, so nothing is gated. "
+          + "Call the `delivery_link` MCP tool to bind one (create it first with `review_import_contract`), "
+          + "then establish the premise with $discovery-interview before editing source. "
+          + "Use the MCP tools rather than a `loopbreaker` CLI, which may not be on PATH.",
+      };
+    }
 
     const state = substrate(db, activeIssue);
     const admitted = state.shape.ready && state.planning.ready && state.planning_review.approved;

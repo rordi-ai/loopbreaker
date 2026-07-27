@@ -748,11 +748,41 @@ function isWithin(parent, child) {
   const rel = relative(parent, child);
   return rel === "" || !rel.startsWith("..") && !isAbsolute(rel);
 }
+var BOOTSTRAP_NUDGE = [
+  "# Loopbreaker governs delivery in this repository",
+  "",
+  "No active issue is linked, so no gate is currently enforced.",
+  "",
+  "Before implementing a feature, run the ordered pipeline rather than coding directly:",
+  "",
+  "Use the loopbreaker MCP tools \u2014 they are always available through this plugin.",
+  "The `loopbreaker` CLI may not be installed on PATH; do not go looking for it.",
+  "",
+  "1. `review_import_contract` \u2014 create the issue and its behavior contract.",
+  "2. `delivery_link` \u2014 bind it. The admission gate is keyed to this binding;",
+  "   until it is set, source edits are refused.",
+  "3. `$discovery-interview` \u2014 the premise must come from a human. Never author a",
+  "   shape field from your own head; interview for it, then the founder approves.",
+  "4. `$shape-strategy` \u2192 `$plan-feature` \u2192 `$review-planning` until admitted.",
+  "5. `$implement-feature` \u2014 write each behavior's harness FIRST, prove it red,",
+  "   then implement and `loopbreaker prove` it green. Evidence is executed,",
+  "   never asserted.",
+  "",
+  "Call `delivery_readiness` at any point for the exact active gate."
+].join("\n");
+function bootstrapNudgeOutput() {
+  return JSON.stringify({
+    hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: BOOTSTRAP_NUDGE }
+  });
+}
 function runSessionStartHook(db, _event) {
   try {
     const activeIssue = db.activeIssue();
-    if (!activeIssue) return "";
-    if (!db.issue(activeIssue)) return "";
+    if (!activeIssue || !db.issue(activeIssue)) {
+      return JSON.stringify({
+        hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: BOOTSTRAP_NUDGE }
+      });
+    }
     const block = composePrime(db, activeIssue);
     return JSON.stringify({
       hookSpecificOutput: {
@@ -779,7 +809,12 @@ function evaluatePreToolUse(db, event, repoRoot) {
     const deniableTarget = targets.some((target) => isWithin(absoluteRepoRoot, target) && !isWithin(loopbreakerDir, target));
     if (!deniableTarget) return { decision: "allow" };
     const activeIssue = db.activeIssue();
-    if (!activeIssue) return { decision: "allow" };
+    if (!activeIssue) {
+      return {
+        decision: "deny",
+        reason: "Loopbreaker governs this repository but no active issue is linked, so nothing is gated. Call the `delivery_link` MCP tool to bind one (create it first with `review_import_contract`), then establish the premise with $discovery-interview before editing source. Use the MCP tools rather than a `loopbreaker` CLI, which may not be on PATH."
+      };
+    }
     const state = substrate(db, activeIssue);
     const admitted = state.shape.ready && state.planning.ready && state.planning_review.approved;
     if (admitted) return { decision: "allow" };
@@ -828,7 +863,11 @@ async function readStdin() {
 async function main() {
   const name = process.argv[2];
   const dbPath = resolve3(process.env.LOOPBREAKER_DB ?? DEFAULT_DB);
-  if (!existsSync(dbPath)) return;
+  if (!existsSync(dbPath)) {
+    if (name === "session-start") process.stdout.write(`${bootstrapNudgeOutput()}
+`);
+    return;
+  }
   let db;
   try {
     const raw = await readStdin();

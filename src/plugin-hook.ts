@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { DEFAULT_DB, cliActor, openDb, type LoopbreakerDb } from "./db.js";
+import { bootstrapNudgeOutput } from "./hooks.js";
 import { dispatchHook } from "./hooks.js";
 
 /**
@@ -51,7 +52,16 @@ async function main(): Promise<void> {
   const name = process.argv[2];
   const dbPath = resolve(process.env.LOOPBREAKER_DB ?? DEFAULT_DB);
 
-  if (!existsSync(dbPath)) return;
+  if (!existsSync(dbPath)) {
+    // No database yet. Still never CREATE one -- that would seed an empty
+    // `.loopbreaker/` in every repo the plugin is enabled in. But silence here
+    // is what made the plugin inert and invisible: a fresh repo is exactly when
+    // an agent most needs to learn the pipeline exists, and it was told
+    // nothing. So session-start orients without touching disk; pre-tool-use
+    // still allows silently, because with no database there is nothing to gate.
+    if (name === "session-start") process.stdout.write(`${bootstrapNudgeOutput()}\n`);
+    return;
+  }
 
   let db: LoopbreakerDb | undefined;
   try {

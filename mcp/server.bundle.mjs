@@ -22771,6 +22771,33 @@ async function runMcp(dbPath) {
     }
   );
   server.registerTool(
+    "delivery_link",
+    {
+      description: "Bind the active issue for this repository, or read/clear the binding. The admission gate is KEYED to this binding: with nothing linked, source edits are refused because the repository is governed but ungated. Call this first, before shaping or implementing.",
+      inputSchema: {
+        issue_id: external_exports.string().min(1).optional(),
+        clear: external_exports.boolean().optional()
+      }
+    },
+    async (input) => {
+      try {
+        if (input.clear) {
+          db.clearActiveIssue();
+          return content({ active_issue: null }, db.path);
+        }
+        if (input.issue_id) {
+          if (!db.issue(input.issue_id)) {
+            throw new DomainError("issue_not_found", `Issue ${input.issue_id} does not exist.`, "Import its behavior contract first with review_import_contract.");
+          }
+          db.setActiveIssue(input.issue_id);
+        }
+        return content({ active_issue: db.activeIssue() }, db.path);
+      } catch (error2) {
+        return toolError(error2);
+      }
+    }
+  );
+  server.registerTool(
     "discovery_record",
     {
       description: "Record the founder interview as one answer per required shape field (problem, appetite, smallest_slice, non_goals, success_signal, reversibility, decision_owner, risks). Transcribe answers a human actually gave; never invent them. Recording leaves the record a DRAFT \u2014 approval is deliberately not available over MCP.",
