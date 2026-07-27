@@ -13,9 +13,12 @@ different facts**. A reviewer can finish checking a repair while a required
 behavior still lacks production-relevant proof. Conflating those facts caused
 review loops to grow indefinitely. A second lesson followed: a verification gate
 cannot rescue an issue whose scope, work ownership, proof plan, production wiring,
-or rollback was never made explicit. Loopbreaker makes the distinct authorities
-explicit: shape, structural planning health, semantic planning approval,
-implementation review, and shipping readiness.
+or rollback was never made explicit. A third followed, and it runs the other way:
+a pipeline that verifies each stage against the one above it never checks the
+premise at the very top, so a wrong premise gets hardened into rigorously
+certified wrong software. Loopbreaker makes the distinct authorities explicit:
+founder-approved discovery, shape, structural planning health, semantic planning
+approval, implementation review, and shipping readiness.
 
 It now packages the complete public workflow as seven reusable agent skills:
 
@@ -145,7 +148,7 @@ or review, load the substrate, and check ship status separately. It exposes eigh
 | `shape_record` | Persist the explicit proceed, spike, park, or reject shape decision |
 | `planning_record` | Record a partial or complete pre-review planning profile |
 | `planning_health` | Read score, five dimensions, blockers, and readiness |
-| `delivery_readiness` | Read shape → planning → planning-review → implementation → shipping authority |
+| `delivery_readiness` | Read discovery → shape → planning → planning-review → implementation → shipping authority |
 | `planning_review_upsert_finding` | Preserve a stable semantic shape/planning finding |
 | `planning_review_record_pass` | Record the next independent planning-review pass, limited to 1–3 |
 | `review_list_issues` | List derived review and shipping states |
@@ -266,6 +269,7 @@ case grants permission to ship.
 
 Shipping is derived through ordered authorities:
 
+- discovery `hold`: no founder-approved discovery record exists, so the premise has no human behind it;
 - shape `hold`: the explicit shape is missing, incomplete, or not `proceed`;
 - planning `hold`: structural planning health is not ready;
 - planning-review `hold`: semantic review has not independently approved implementation;
@@ -303,6 +307,9 @@ loopbreaker                         live issue dashboard
 loopbreaker init                    initialize SQLite
 loopbreaker demo                    seed the synthetic incident
 loopbreaker import FILE             import a behavior contract
+loopbreaker discover ISSUE FILE     record the founder interview answers
+loopbreaker discover ISSUE --approve  approve the premise (a human act)
+loopbreaker discovery ISSUE         inspect the discovery record and its status
 loopbreaker shape ISSUE FILE        record an explicit shape decision
 loopbreaker plan ISSUE FILE         record a planning profile
 loopbreaker health ISSUE            inspect compact planning health
