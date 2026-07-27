@@ -61,6 +61,14 @@ const planningSchema = z.object({
   migration: z.string().optional(),
   decision_owner: z.string().optional(),
   risks: z.array(z.object({ risk: z.string(), mitigation: z.string() })).optional(),
+  // LB-31 — decisions the approved premise did not settle. A `one_way` entry
+  // without a founder_answer blocks planning: it is a product decision the
+  // agent would otherwise be making alone, and an irreversible one.
+  decisions: z.array(z.object({
+    decision: z.string().min(1),
+    reversibility: z.enum(["reversible", "one_way"]),
+    founder_answer: z.string().min(1).optional(),
+  })).optional(),
 });
 
 const shapeSchema = z.object({

@@ -102,6 +102,19 @@
       "proves": [
         "LB-29-B1"
       ]
+    },
+    {
+      "id": "lb-31-b1",
+      "tier": "wired",
+      "runner": "vitest-wired",
+      "target": "test/wired/lb-31-b1.test.ts",
+      "purpose": "Planning escalates one-way doors to the founder instead of deciding them alone.",
+      "prerequisites": [
+        "pnpm build"
+      ],
+      "proves": [
+        "LB-31-B1"
+      ]
     }
   ]
 }

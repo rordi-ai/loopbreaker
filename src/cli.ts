@@ -173,7 +173,7 @@ function oneOf<T extends string>(value: string, allowed: readonly T[], label: st
 function planningFromUnknown(value: unknown): PlanningProfile {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new DomainError("invalid_plan", "Planning profile must be a JSON object.");
   const input = value as Record<string, unknown>;
-  const allowed = new Set(["outcome", "appetite", "non_goals", "work_units", "proofs", "production_wiring", "rollback", "migration", "decision_owner", "risks"]);
+  const allowed = new Set(["outcome", "appetite", "non_goals", "work_units", "proofs", "production_wiring", "rollback", "migration", "decision_owner", "risks", "decisions"]);
   const unknown = Object.keys(input).filter((key) => !allowed.has(key));
   if (unknown.length > 0) throw new DomainError("invalid_plan", `Unknown planning fields: ${unknown.join(", ")}.`);
   const profile: PlanningProfile = {};
@@ -216,6 +216,28 @@ function planningFromUnknown(value: unknown): PlanningProfile {
       const risk = item as Record<string, unknown>;
       if (typeof risk.risk !== "string" || typeof risk.mitigation !== "string") throw new DomainError("invalid_plan", "Each risk requires string risk and mitigation.");
       return { risk: risk.risk, mitigation: risk.mitigation };
+    });
+  }
+  if (input.decisions !== undefined) {
+    if (!Array.isArray(input.decisions)) throw new DomainError("invalid_plan", "decisions must be an array.");
+    profile.decisions = input.decisions.map((item) => {
+      const entry = item as { decision?: unknown; reversibility?: unknown; founder_answer?: unknown };
+      if (typeof entry.decision !== "string" || entry.decision.trim() === "") {
+        throw new DomainError("invalid_plan", "Each decision requires a non-empty decision string.");
+      }
+      // Refused rather than defaulted: treating an unrecognised value as
+      // reversible would make the escalation gate escapable by typo.
+      if (entry.reversibility !== "reversible" && entry.reversibility !== "one_way") {
+        throw new DomainError("invalid_plan", `decision.reversibility must be "reversible" or "one_way", got ${JSON.stringify(entry.reversibility)}.`);
+      }
+      if (entry.founder_answer !== undefined && typeof entry.founder_answer !== "string") {
+        throw new DomainError("invalid_plan", "decision.founder_answer must be a string when present.");
+      }
+      return {
+        decision: entry.decision,
+        reversibility: entry.reversibility,
+        ...(typeof entry.founder_answer === "string" ? { founder_answer: entry.founder_answer } : {}),
+      };
     });
   }
   return profile;

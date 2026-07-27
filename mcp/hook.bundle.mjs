@@ -482,6 +482,9 @@ function planningHealth(db, issueId) {
   const enforcedProofs = proofs.filter((proof) => enforcedIds.has(proof.behavior_id));
   const duplicateWorkUnitIds = workUnits.length > 0 && new Set(workUnits.map((unit) => unit.id)).size !== workUnits.length;
   const unmitigatedRisks = profile?.risks?.filter((risk) => present(risk.risk) && !present(risk.mitigation)) ?? [];
+  const unescalated = (profile?.decisions ?? []).filter(
+    (entry) => entry.reversibility === "one_way" && !present(entry.founder_answer)
+  );
   const scopeScore = (present(profile?.outcome) ? 8 : 0) + (present(profile?.appetite) ? 6 : 0) + ((profile?.non_goals?.length ?? 0) > 0 ? 6 : 0);
   const contractScore = (behaviors.length > 0 ? 4 : 0) + (enforced.length > 0 ? 4 : 0) + (behaviors.every((behavior) => present(behavior.title)) ? 3 : 0) + (behaviors.every((behavior) => present(behavior.trigger)) ? 3 : 0) + (behaviors.every((behavior) => present(behavior.expected)) ? 3 : 0) + (behaviors.every((behavior) => present(behavior.verify)) ? 3 : 0);
   const traceabilityScore = (workUnits.length > 0 ? 4 : 0) + (workUnits.length > 0 && new Set(workUnits.map((unit) => unit.id)).size === workUnits.length && workUnits.every((unit) => present(unit.id)) ? 4 : 0) + (workUnits.length > 0 && invalidWorkReferences.length === 0 ? 4 : 0) + (enforced.every((behavior) => referencedIds.has(behavior.id)) ? 6 : 0) + (workUnits.length > 0 && workUnits.every((unit) => present(unit.title) && present(unit.done_when)) ? 2 : 0);
@@ -505,6 +508,13 @@ function planningHealth(db, issueId) {
   if (unitOnly.length > 0) blockers.push({ code: "unit_only_proof", message: `Enforced behaviors plan only unit proof: ${unitOnly.map((proof) => proof.behavior_id).join(", ")}.` });
   if (invalidReferences.length > 0) blockers.push({ code: "invalid_behavior_reference", message: `Plan references unknown behaviors: ${[...new Set(invalidReferences)].join(", ")}.` });
   if (duplicateWorkUnitIds) blockers.push({ code: "duplicate_work_unit", message: "Work-unit IDs must be unique." });
+  for (const entry of unescalated) {
+    const summary = entry.decision.length > 90 ? `${entry.decision.slice(0, 90)}...` : entry.decision;
+    blockers.push({
+      code: "unescalated_one_way_door",
+      message: `A one-way decision has no founder answer: "${summary}" Ask, then record the answer in founder_answer.`
+    });
+  }
   if (unmitigatedRisks.length > 0) blockers.push({ code: "unmitigated_risk", message: "Every named planning risk requires a mitigation." });
   if (!present(profile?.production_wiring)) blockers.push({ code: "missing_production_wiring", message: "Production construction and wiring are not described." });
   if (!present(profile?.rollback)) blockers.push({ code: "missing_rollback", message: "Rollback or safe disablement is not described." });

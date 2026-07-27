@@ -29,7 +29,32 @@ use `$shape-strategy` instead of planning competing interpretations.
    - concrete verification action and expected observation.
 3. Treat every behavior as enforced. Set `advisory: true` only for an explicitly
    non-shipping diagnostic or follow-up.
-4. Require one real wired or live capability proof for each enforced behavior.
+4. **Escalate one-way doors; decide the rest.** Discovery settled the premise,
+   but planning discovers choices the founder could not have anticipated. Record
+   them in `decisions`, each marked `reversible` or `one_way`:
+
+   ```json
+   "decisions": [
+     { "decision": "Bake the SHA at build time rather than reading git at runtime.",
+       "reversibility": "reversible" },
+     { "decision": "Drop the legacy column in the users migration.",
+       "reversibility": "one_way",
+       "founder_answer": "Asked 2026-07-27: drop it, unread for two releases." }
+   ]
+   ```
+
+   A `one_way` decision with no `founder_answer` blocks planning by name. Ask,
+   then record what they said. Reversible decisions are yours to make — do not
+   manufacture escalations for them, and omit `decisions` entirely when planning
+   genuinely faced no such choice.
+
+   One-way means expensive or impossible to unwind: schema migrations that drop
+   or rewrite data, public API or URL shape, anything destructive, anything that
+   commits an external contract. **Trading away proof strength is also a product
+   decision** — demoting an enforced behavior's proof tier to fit an appetite is
+   a choice about how much rigor to give up, not a technical detail.
+
+5. Require one real wired or live capability proof for each enforced behavior.
    A planned proof must be **executable** — name the command or driver that will
    run it, because implementation registers it as a harness and loopbreaker runs
    it. "Manual verification" and "reviewer confirms" are not proofs: nothing can

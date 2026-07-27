@@ -71,6 +71,16 @@ behavior lacks proof, the repair is to build and register its harness and run
 evidence is marked not-executed and cannot verify an enforced behavior; attempting
 it is refused by name.
 
+Check for **undeclared one-way doors**. Planning health blocks a `one_way`
+decision with no founder answer, but it can only see what the plan declared. A
+plan that quietly performs an irreversible change without recording it as a
+decision passes the mechanical gate and should not pass you. Read
+`production_wiring`, `migration` and `rollback` against the recorded `decisions`:
+does anything drop or rewrite data, fix a public URL or API shape, or commit an
+external contract that the plan never surfaced? Does `rollback` actually restore
+the prior state, or does it only remove new code while leaving a changed world?
+A mismatch is a finding, not a nit.
+
 Check the shape of the proof, not just its presence:
 
 - Does the behavior have a `harness_ref`, and does the registry entry name it back

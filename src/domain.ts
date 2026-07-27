@@ -136,6 +136,12 @@ export function planningHealth(db: LoopbreakerDb, issueId: string): PlanningHeal
   const enforcedProofs = proofs.filter((proof) => enforcedIds.has(proof.behavior_id));
   const duplicateWorkUnitIds = workUnits.length > 0 && new Set(workUnits.map((unit) => unit.id)).size !== workUnits.length;
   const unmitigatedRisks = profile?.risks?.filter((risk) => present(risk.risk) && !present(risk.mitigation)) ?? [];
+  // LB-31 — a one-way door with no founder answer is a product decision the
+  // agent made alone. Reversible decisions are the agent's to make; these are
+  // not, and they are exactly the ones that cannot be undone later.
+  const unescalated = (profile?.decisions ?? []).filter(
+    (entry) => entry.reversibility === "one_way" && !present(entry.founder_answer),
+  );
 
   const scopeScore = (present(profile?.outcome) ? 8 : 0)
     + (present(profile?.appetite) ? 6 : 0)
@@ -180,6 +186,13 @@ export function planningHealth(db: LoopbreakerDb, issueId: string): PlanningHeal
   if (unitOnly.length > 0) blockers.push({ code: "unit_only_proof", message: `Enforced behaviors plan only unit proof: ${unitOnly.map((proof) => proof.behavior_id).join(", ")}.` });
   if (invalidReferences.length > 0) blockers.push({ code: "invalid_behavior_reference", message: `Plan references unknown behaviors: ${[...new Set(invalidReferences)].join(", ")}.` });
   if (duplicateWorkUnitIds) blockers.push({ code: "duplicate_work_unit", message: "Work-unit IDs must be unique." });
+  for (const entry of unescalated) {
+    const summary = entry.decision.length > 90 ? `${entry.decision.slice(0, 90)}...` : entry.decision;
+    blockers.push({
+      code: "unescalated_one_way_door",
+      message: `A one-way decision has no founder answer: "${summary}" Ask, then record the answer in founder_answer.`,
+    });
+  }
   if (unmitigatedRisks.length > 0) blockers.push({ code: "unmitigated_risk", message: "Every named planning risk requires a mitigation." });
   if (!present(profile?.production_wiring)) blockers.push({ code: "missing_production_wiring", message: "Production construction and wiring are not described." });
   if (!present(profile?.rollback)) blockers.push({ code: "missing_rollback", message: "Rollback or safe disablement is not described." });

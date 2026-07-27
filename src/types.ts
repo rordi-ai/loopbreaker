@@ -66,6 +66,21 @@ export interface PlanningProof {
   method: string;
 }
 
+/**
+ * LB-31 — a decision planning had to make that the approved premise did not
+ * settle. Discovery fixes the bet; planning DISCOVERS choices the founder could
+ * not have anticipated, and the irreversible ones are product decisions wearing
+ * technical clothes.
+ */
+export interface PlanningDecision {
+  /** What was decided, in enough detail that a founder can recognise the stake. */
+  decision: string;
+  /** `one_way` means expensive or impossible to unwind, so it needs a founder answer. */
+  reversibility: "reversible" | "one_way";
+  /** Required for `one_way`: the founder's answer that settles it. */
+  founder_answer?: string;
+}
+
 export interface PlanningRisk {
   risk: string;
   mitigation: string;
@@ -82,6 +97,8 @@ export interface PlanningProfile {
   migration?: string;
   decision_owner?: string;
   risks?: PlanningRisk[];
+  /** LB-31 — decisions the premise did not settle. Omit when planning faced none. */
+  decisions?: PlanningDecision[];
 }
 
 export interface ShapeProfile {
