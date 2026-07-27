@@ -47,11 +47,33 @@ Read the repository, the linked issues, and any prior discovery records first.
 Never spend a founder's answer on something you could have looked up. Questions
 that reveal you did not read the code are the fastest way to lose an interview.
 
-### 2. Build the decision tree, then walk it
+Research is for **context, never for constraint.** What the repository happens
+to contain today tells you what building this will cost — it never tells you
+what the feature is for. "There is no email provider, so should we simulate it?"
+is not a discovery question: it lets the current state of the code decide the
+premise, which is exactly backwards. Missing infrastructure is a planning input.
+Record it as a risk or a work unit; do not let it shrink the bet.
 
-Map the decision space before the first question: what is genuinely open, which
-decisions constrain others, what order resolves foundations first. Then ask in
-that order.
+### 2. Interview the premise, not the design
+
+Every question must serve one of the eight required shape fields:
+
+`problem` · `appetite` · `smallest_slice` · `non_goals` · `success_signal` ·
+`reversibility` · `decision_owner` · `risks`
+
+If a question does not resolve one of those, it does not belong at this stage.
+The test is simple: **would the answer change if the codebase were different?**
+If yes, it is an implementation question and belongs to `$plan-feature`.
+
+| Discovery asks | Not |
+|---|---|
+| Who sends this, and what do they do today instead? | Which email provider should we use? |
+| What has to be true for this to be worth building? | Should the composer be a rich-text editor or MJML? |
+| What would make you turn it off again? | Where should the service seam live? |
+| What are we deliberately not doing in the first slice? | Should we mock it since there is no provider? |
+
+Architecture, libraries, seams and file layout are downstream decisions made
+against an approved premise. Deciding them here inverts the pipeline.
 
 ### 3. Ask one focused question at a time
 
@@ -59,13 +81,14 @@ Use the host's question tool. For each question:
 
 - Lead with **your recommendation and the reasoning behind it**, then the
   alternatives. Present a judgment, not a menu.
-- Give 2–4 concrete named options with real trade-offs. Option text should
-  demonstrate expertise: not "simpler approach" but "last-write-wins with a
-  timestamp — no conflict UI, acceptable while concurrent edits are under 1% of
-  writes."
-- Surface what the founder has not considered. They know what they want built;
-  your value is the cache invalidation, the N+1 in the happy path, the migration
-  they will need in six months.
+- Options are competing **framings of the bet**, not competing implementations:
+  who it serves, how big it is, what counts as success. Not "mock vs real
+  provider" but "is this for one operator sending an occasional announcement, or
+  for a marketer running scheduled campaigns to a list?" — those are different
+  features, and only the founder knows which one this is.
+- Surface what the founder has not considered about the *problem*: who else
+  touches this, what happens when it goes wrong, what they will wish they had
+  scoped out.
 
 **Go deep at issue grain.** The "batch at most four questions" guidance in
 `shape-strategy` is an *initiative-grain* rule and is correct there — a broad bet
