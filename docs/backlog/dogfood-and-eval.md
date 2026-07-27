@@ -568,3 +568,37 @@ waiver, or a recorded supersession — never a quiet edit.
 
 Not yet built: the labeled corpus, both arms, and the false-ship rate.
 `/data/projects/rordi-eval-sandbox` is the disposability pattern to reuse.
+
+---
+
+## 13. LB-30 — independent discovery review (deferred 2026-07-27)
+
+Every layer of the pipeline carries an independent bounded review except the top one.
+Planning review and implementation review are both 2+1 and both cross-vendor. Discovery has
+only founder approval — which is a **decision**, not a review. Founder decision: real gap,
+build it after the talk.
+
+**What a discovery review can legitimately check.** Not whether the premise is correct; only the
+founder can judge that, and a reviewer claiming otherwise would be the premise-injection failure
+wearing a reviewer's hat. It checks whether the record honestly represents the human:
+
+- Is every field a real answer, or is some of it the interviewer's prose wearing the founder's
+  name? That is exactly the LB-20 tailnet failure.
+- Did the options lead the witness — three choices all pointing one way?
+- Do answers contradict each other? `MKTG-EMAIL-1` pairs appetite "whatever it takes" with a
+  deliberately tiny `smallest_slice`, and leaves a template library in scope while the slice
+  excludes a composer. That tension should surface before the record freezes.
+- Are accepted-but-unmitigated risks named as such rather than quietly dropped?
+- Is a field vacuous — restating the title, or answering a different question than the one asked?
+
+Same internal-consistency job the rest of the pipeline does, applied one layer up.
+
+**Ordering:** interview → record draft → independent review → repair → founder approves. Reviewing
+before approval means the founder never spends an approval on a defective record, and it mirrors
+planning exactly.
+
+**Scope:** review-pass table, findings, the readiness chain gaining a discovery-review authority,
+a seventh-and-a-half skill, and harnesses proven red first. Roughly LB-28-sized.
+
+Until it exists, the honest statement is that discovery is reviewed by the founder alone, and that
+asymmetry is worth naming rather than glossing.
