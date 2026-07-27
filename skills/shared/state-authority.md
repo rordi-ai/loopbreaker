@@ -17,11 +17,18 @@ emits are part of that skill's own protocol, not this document — but every hea
 whatever its shape, must be populated only from persisted state and must appear
 first.
 
+## Bind the active issue
+
+Run `loopbreaker link ISSUE` before any work. The PreToolUse admission hook is keyed
+to that binding: with no linked issue it fails open and allows every edit. An
+unlinked session therefore *looks* gated and is not. If a skill's protocol depends
+on admission being enforced, it depends on this first.
+
 ## Persisted state is the only authority
 
 - Persisted Loopbreaker state — what `delivery_prime`, `delivery_readiness`, and
-  `review_substrate` return — is the only authority for shape, planning, planning
-  review, implementation admission, review, and shipping status. Prose, intuition,
+  `review_substrate` return — is the only authority for discovery, shape, planning,
+  planning review, implementation admission, review, and shipping status. Prose, intuition,
   a high health score, or "the code looks right" are not authority.
 - Copy dispositions, scores, and statuses verbatim from the persisted record. Do not
   paraphrase, round, or soften them.
@@ -31,6 +38,25 @@ first.
   the state exactly as it was before the turn began — even when the work performed
   in this turn deserves a better result. Saying a status "may move," "should move,"
   or "is implied by" the work done is an invalid response.
+
+## The premise must come from a human
+
+Discovery is the first ordered authority. A shape cannot reach `proceed` until every
+required shape field traces to a founder-approved discovery record. Never author a
+shape field from your own head or from a neighbouring project — if you cannot cite
+the human answer behind it, interview for it. Approval is deliberately absent from
+the MCP surface; it is the one gate you are barred from satisfying yourself.
+
+## Evidence is executed, never asserted
+
+A verdict comes from running a registered harness, not from a claim about a run.
+`loopbreaker prove BEHAVIOR` executes the harness bound to that behavior and derives
+`pass`/`fail` from its exit code; a harness that could not run records `not_run`,
+which never verifies anything. Evidence recorded by assertion is marked
+not-executed and cannot verify an enforced behavior.
+
+Write each behavior's harness *before* its implementation and prove it RED against
+the current code. A harness that is green before the work exists proves nothing.
 
 ## There is no pass 4
 

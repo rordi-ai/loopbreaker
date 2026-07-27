@@ -64,9 +64,24 @@ authorize a waiver. There is no pass 4.
 Record the completed pass with `review_record_pass`. Use `review_upsert_finding` for
 stable root-cause findings. Preserve the same finding ID on re-review.
 
-When the review directly observes qualifying wired/live proof, record it with
-`review_record_evidence` and verify the behavior with `review_verify_behavior`
-before reading `review_ship_status`. If those mutations are unavailable or were not
+A behavior is verified by EXECUTION, never by a reviewer's observation. If a
+behavior lacks proof, the repair is to build and register its harness and run
+`loopbreaker prove BEHAVIOR` — not to record what you watched happen.
+`review_record_evidence` remains available for supporting observations, but such
+evidence is marked not-executed and cannot verify an enforced behavior; attempting
+it is refused by name.
+
+Check the shape of the proof, not just its presence:
+
+- Does the behavior have a `harness_ref`, and does the registry entry name it back
+  in `proves`? A one-sided binding is a finding.
+- Is the passing evidence `baselined` — was the harness ever observed failing for
+  this behavior? An unbaselined pass may come from a harness that cannot fail.
+- Does the harness drive the tier its contract names, or does it import the code
+  in-process and call a `wired` proof?
+
+`loopbreaker demote --dry-run` reports every enforced behavior currently verified
+without an executed proof. If those mutations are unavailable or were not
 authorized, report the current behavior and shipping states unchanged; never predict
 that a passing review will move them.
 

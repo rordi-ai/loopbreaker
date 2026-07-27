@@ -30,21 +30,26 @@ its own work. The frozen behavior contract is the only interface between them.
 
 ## Protocol
 
-1. **Gate.** Call `delivery_readiness`. Drive `discovery-interview` first when the
+1. **Bind.** `loopbreaker link ISSUE` before anything else, in the root and in
+   every worker worktree. The admission hook is keyed to that binding; an unlinked
+   session fails open and every gate below is decorative.
+2. **Gate.** Call `delivery_readiness`. Drive `discovery-interview` first when the
    issue has no approved discovery record, then `shape-strategy`, `plan-feature`,
    and an independent `review-planning` (via the reviewer role) until
    `implementation.admitted` is true. Never start workers before admission.
-2. **Fan out.** Spawn one worker per work unit in parallel. Give each the frozen
+3. **Fan out.** Spawn one worker per work unit in parallel. Give each the frozen
    contract excerpt it owns, verbatim. Workers changing scope report back for a
    contract decision; they do not resolve it locally.
-3. **Integrate.** Merge worktrees, run the repository verification, and record
-   attributable evidence with `review_record_evidence` for proof the orchestrator
-   directly observed.
-4. **Review.** Invoke the reviewer for pass 1. Repair findings by re-dispatching
+4. **Integrate.** Merge worktrees and run the repository verification. Each
+   behavior is verified by `loopbreaker prove`, whose verdict comes from its
+   registered harness's exit code — the orchestrator records no verdicts of its
+   own. Workers own writing, registering and binding their behaviors' harnesses,
+   and must prove them RED before implementing.
+5. **Review.** Invoke the reviewer for pass 1. Repair findings by re-dispatching
    the owning worker with the finding's smallest fix, then invoke the reviewer
    for pass 2, and pass 3 as decision only. Three passes bound both review
    stages; there is no pass 4.
-5. **Ship.** Read `review_ship_status` and copy its disposition literally. Review
+6. **Ship.** Read `review_ship_status` and copy its disposition literally. Review
    completion never implies shipping readiness. A human authorizes any waiver.
 
 ## Separation rules

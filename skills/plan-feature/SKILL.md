@@ -30,6 +30,11 @@ use `$shape-strategy` instead of planning competing interpretations.
 3. Treat every behavior as enforced. Set `advisory: true` only for an explicitly
    non-shipping diagnostic or follow-up.
 4. Require one real wired or live capability proof for each enforced behavior.
+   A planned proof must be **executable** — name the command or driver that will
+   run it, because implementation registers it as a harness and loopbreaker runs
+   it. "Manual verification" and "reviewer confirms" are not proofs: nothing can
+   execute them, so the behavior can never be verified. If the repository has no
+   test tooling, say so in the plan — standing it up is work the plan must own.
    Add unit-level fault injection only when the real layer cannot safely create the
    failure. Do not demand every test layer for every claim.
 5. Derive small work units and genuine dependencies. Map every work unit to one or
