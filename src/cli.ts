@@ -62,7 +62,30 @@ Output:
 const COMMAND_HELP: Record<string, string> = {
   init: "loopbreaker init [--db PATH]\n\nCreate the database and schema. Safe to run repeatedly.",
   demo: "loopbreaker demo [--db PATH]\n\nSeed DEMO-1 without replacing existing records. Safe to run repeatedly.",
-  import: "loopbreaker import FILE [--db PATH]\n\nImport JSON shaped as {issue_id,title,description?,behaviors:[...],planning?}. Reviewed contracts and planning are frozen.",
+  import: `loopbreaker import FILE [--db PATH]
+
+Import an issue and its behavior contract. Reviewed contracts and planning are frozen.
+
+{
+  "issue_id": "APP-42",
+  "title": "Short imperative title",
+  "description": "Optional context.",
+  "behaviors": [
+    {
+      "id": "APP-42-B1",
+      "title": "What must be true",
+      "trigger": "WHEN this happens",
+      "expected": "THEN this is observable",
+      "verify": "HOW it is proven, at the tier the proof claims",
+      "advisory": false,
+      "harness_ref": "optional registry id from harnesses.json"
+    }
+  ]
+}
+
+Behaviors are ENFORCED unless "advisory": true. Every enforced behavior needs a
+wired or live proof and a registered harness before it can be verified.
+See examples/issue-contract.json in the loopbreaker repository.`,
   plan: "loopbreaker plan ISSUE FILE [--db PATH]\n\nRecord a partial or complete planning profile before pass one. Returns deterministic health and named blockers.",
   shape: "loopbreaker shape ISSUE FILE [--db PATH]\n\nRecord problem, appetite, smallest_slice, non_goals, success_signal, reversibility, decision_owner, risks, and disposition.",
   health: "loopbreaker health ISSUE [--db PATH]\n\nReturn score, dimensions, blockers, and readiness without the full planning profile.",
@@ -76,7 +99,30 @@ const COMMAND_HELP: Record<string, string> = {
   evidence: "loopbreaker evidence ISSUE [--behavior ID] --tier unit|wired|live --verdict pass|fail --summary TEXT [--source URI] [--db PATH]",
   verify: "loopbreaker verify BEHAVIOR --evidence ID [--db PATH]\n\nVerify a behavior with passing evidence attached to that behavior.",
   waive: "loopbreaker waive ISSUE --behavior ID --rationale TEXT --approved-by NAME [--db PATH]\n\nCreate durable named debt for one enforced behavior.",
-  discover: "loopbreaker discover ISSUE FILE [--db PATH]\nloopbreaker discover ISSUE --approve --by NAME [--db PATH]\n\nRecord the founder interview as one answer per required shape field, then approve it. Shape cannot reach proceed without an approved record. Re-recording answers returns the record to draft: an approved premise silently edited would have the gate vouch for text the approver never saw.",
+  discover: `loopbreaker discover ISSUE FILE [--db PATH]
+loopbreaker discover ISSUE --approve --by NAME [--db PATH]
+
+Record the founder interview as one answer per required shape field, then approve it.
+
+{
+  "answers": [
+    { "field": "problem",        "question": "...", "answer": "..." },
+    { "field": "appetite",       "question": "...", "answer": "..." },
+    { "field": "smallest_slice", "question": "...", "answer": "..." },
+    { "field": "non_goals",      "question": "...", "answer": "..." },
+    { "field": "success_signal", "question": "...", "answer": "..." },
+    { "field": "reversibility",  "question": "...", "answer": "..." },
+    { "field": "decision_owner", "question": "...", "answer": "..." },
+    { "field": "risks",          "question": "...", "answer": "..." }
+  ]
+}
+
+All eight fields are required. Transcribe answers a human actually gave; never
+invent them. Shape cannot reach proceed without an APPROVED record, and you
+cannot approve it yourself -- hand the founder the browser route
+(loopbreaker serve, then "Approve the premise") or the --approve command.
+Re-recording answers returns the record to draft, so an approved premise cannot
+be silently edited afterwards.`,
   discovery: "loopbreaker discovery ISSUE [--db PATH]\n\nShow the discovery record, its answers, and whether it is approved, grandfathered, or still a draft.",
   harnesses: "loopbreaker harnesses [--registry PATH] [--db PATH]\n\nList every registered verify harness with its declared tier and runner. A behavior's harness_ref names an entry here; it never stores a command.",
   bind: "loopbreaker bind BEHAVIOR --harness ID [--db PATH]\n\nPoint a behavior at a registered harness. Not frozen by the acceptance contract: the contract states what must be true, the ref only says which runner proves it. The registry entry must also name this behavior in its `proves` list, which is a reviewed code change.",
