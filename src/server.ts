@@ -5,7 +5,7 @@ import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import type { LoopbreakerDb } from "./db.js";
-import { createWaiver, DomainError, recordPass, substrate, upsertFinding, verifyBehavior } from "./domain.js";
+import { approveDiscovery, createWaiver, discoveryState, DomainError, recordPass, substrate, upsertFinding, verifyBehavior } from "./domain.js";
 import { proveBehavior } from "./prove.js";
 
 const WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../web-dist");
@@ -50,6 +50,19 @@ function serveWeb(request: IncomingMessage, response: ServerResponse): void {
       },
     });
   }
+}
+
+/** Read a JSON request body. Empty bodies parse as `{}` so a missing field is a named refusal, not a parse error. */
+function readBody(request: IncomingMessage): Promise<unknown> {
+  return new Promise((resolvePromise, reject) => {
+    let raw = "";
+    request.on("data", (chunk) => { raw += String(chunk); });
+    request.once("error", reject);
+    request.once("end", () => {
+      if (!raw.trim()) { resolvePromise({}); return; }
+      try { resolvePromise(JSON.parse(raw)); } catch (error) { reject(error); }
+    });
+  });
 }
 
 function sqliteDataVersion(db: LoopbreakerDb): number {
@@ -126,6 +139,34 @@ export function startServer(db: LoopbreakerDb, port = 7331): Promise<{ url: stri
       }
       if (request.method === "GET" && parts[0] === "api" && parts[1] === "issues" && parts[3] === "substrate") {
         send(response, 200, substrate(db, decodeURIComponent(parts[2] ?? "")));
+        return;
+      }
+      if (request.method === "POST" && parts[0] === "api" && parts[1] === "issues"
+          && parts[3] === "discovery" && parts[4] === "approve") {
+        // LB-29 — approve a discovery record from the browser. The CLI path
+        // stays, but this is the one people will actually use; the write is
+        // stamped `web` because this handle declared that ingress.
+        const issueId = decodeURIComponent(parts[2] ?? "");
+        readBody(request).then((body) => {
+          try {
+            const approvedBy = (body as { approved_by?: unknown }).approved_by;
+            if (typeof approvedBy !== "string" || !approvedBy.trim()) {
+              throw new DomainError("missing_approver", "approved_by is required: an approver must be named.");
+            }
+            const result = approveDiscovery(db, issueId, approvedBy);
+            send(response, 200, result);
+            broadcast(issueId, "browser");
+          } catch (error) {
+            const known = error instanceof DomainError;
+            send(response, known ? 400 : 500, {
+              error: { code: known ? error.code : "internal_error", message: error instanceof Error ? error.message : String(error) },
+            });
+          }
+        }).catch(() => send(response, 400, { error: { code: "invalid_body", message: "Request body must be JSON." } }));
+        return;
+      }
+      if (request.method === "GET" && parts[0] === "api" && parts[1] === "issues" && parts[3] === "discovery") {
+        send(response, 200, discoveryState(db, decodeURIComponent(parts[2] ?? "")));
         return;
       }
       if (request.method === "POST" && parts[0] === "api" && parts[1] === "issues" && parts[3] === "actions") {

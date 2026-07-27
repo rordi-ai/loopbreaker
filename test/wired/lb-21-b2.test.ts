@@ -65,11 +65,16 @@ describe("LB-21-B2 · trigger_type is the ingress", () => {
     expect(row?.trigger_type).toBe("mcp");
   });
 
-  it("admits only the four declared ingress values", () => {
+  it("admits only declared ingress values", () => {
     expect(missingProvenanceColumns(workspace.db, "issues"), "issues has no provenance columns yet").toEqual([]);
     const seen = new Set(rowsOf(workspace.db, "issues").map((row) => row.trigger_type));
     for (const value of seen) {
-      expect(["cli", "mcp", "hook", "plugin_hook"]).toContain(value);
+      // LB-29 added `web` as a fifth ingress, superseding B2's original
+      // four-value enumeration: before it, the HTTP server inherited the CLI's
+      // handle and browser writes were indistinguishable from terminal ones.
+      // The rule B2 actually protects is "trigger_type is a declared ingress,
+      // never free text", and that still holds.
+      expect(["cli", "mcp", "hook", "plugin_hook", "web"]).toContain(value);
     }
   });
 

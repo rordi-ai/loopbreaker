@@ -609,12 +609,16 @@ async function main(): Promise<void> {
       return;
     }
     if (command === "serve") {
+      // LB-29: the server gets its OWN handle stamped `web`. Every write it
+      // makes originates from a browser request, so inheriting the CLI's
+      // provenance would misattribute them to the terminal.
       const portValue = typeof flags.port === "string" ? Number(flags.port) : 7331;
       if (!Number.isInteger(portValue) || portValue < 1 || portValue > 65535) throw new DomainError("invalid_port", "--port must be an integer from 1 to 65535.");
-      const server = await startServer(db, portValue);
+      const webDb = openDb(dbPath, { trigger_type: "web", triggered_by: "browser", trigger_data: null });
+      const server = await startServer(webDb, portValue);
       keepOpen = true;
-      process.stdout.write(`${success({ url: server.url, database: db.path, stop: "Ctrl-C" })}\n`);
-      const stop = async () => { await server.close(); db.close(); process.exit(0); };
+      process.stdout.write(`${success({ url: server.url, database: webDb.path, stop: "Ctrl-C" })}\n`);
+      const stop = async () => { await server.close(); webDb.close(); db.close(); process.exit(0); };
       process.once("SIGINT", stop);
       process.once("SIGTERM", stop);
       return;

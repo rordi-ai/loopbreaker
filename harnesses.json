@@ -89,6 +89,19 @@
       "proves": [
         "LB-21-B6"
       ]
+    },
+    {
+      "id": "lb-29-b1",
+      "tier": "wired",
+      "runner": "vitest-wired",
+      "target": "test/wired/lb-29-b1.test.ts",
+      "purpose": "The HTTP server is a distinct `web` ingress and can approve a discovery record.",
+      "prerequisites": [
+        "pnpm build"
+      ],
+      "proves": [
+        "LB-29-B1"
+      ]
     }
   ]
 }

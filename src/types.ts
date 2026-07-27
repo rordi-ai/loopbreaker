@@ -3,8 +3,13 @@
  * per-call: `mcp.ts` opens one shared handle closed over by interleaving async
  * handlers, so mutable per-call ambient state on that instance would be unsafe.
  * Per-MCP-tool granularity is an explicit non-goal of this slice.
+ *
+ * LB-29 added `web`, superseding LB-21-B2's four-value enumeration. Until then
+ * the HTTP server inherited the CLI's handle, so a browser write and a terminal
+ * write were indistinguishable. Note this is ATTRIBUTION, not prevention: an
+ * agent with a shell can reach the HTTP surface as easily as the CLI.
  */
-export type TriggerType = "cli" | "mcp" | "hook" | "plugin_hook";
+export type TriggerType = "cli" | "mcp" | "hook" | "plugin_hook" | "web";
 
 /** LB-21 — the provenance triple stamped on every row version the mutation path writes. */
 export interface Provenance {

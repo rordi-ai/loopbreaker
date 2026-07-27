@@ -127,7 +127,32 @@ export function App() {
     }
   }, [activeIssue, loadSubstrate]);
 
+  const approveDiscovery = useCallback(async () => {
+    if (!activeIssue) return;
+    const approver = window.prompt("Approve this premise as:");
+    if (!approver?.trim()) {
+      setNotice("Approval needs a name. Nothing was recorded.");
+      return;
+    }
+    setNotice("Recording the approval…");
+    try {
+      await requestJson(`/api/issues/${encodeURIComponent(activeIssue)}/discovery/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ approved_by: approver.trim() }),
+      });
+      await loadSubstrate(activeIssue);
+      setNotice("Premise approved. The shape gate is released.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }, [activeIssue, loadSubstrate]);
+
   const demoActions = substrate?.issue.id === "DEMO-1";
+  // LB-29: the approval affordance is NOT demo-gated. It is the one act with no
+  // agent-facing equivalent — absent from MCP by design — so the browser is
+  // where a human is actually expected to perform it.
+  const heldAtDiscovery = substrate?.shipping.gate === "discovery";
   const decisionTone = substrate?.shipping.disposition ?? "hold";
 
   return (
@@ -158,6 +183,11 @@ export function App() {
               <span className="decision-label">{substrate.issue.id} · shape {substrate.shape.profile?.disposition ?? "missing"} · planning {substrate.planning.score}/100 · plan review {substrate.planning_review.disposition.replaceAll("_", " ")}</span>
               <h2>{substrate.issue.title}</h2>
               <p>{substrate.shipping.reason}</p>
+              {heldAtDiscovery ? (
+                <div className="decision-actions">
+                  <button onClick={() => void approveDiscovery()}>Approve the premise</button>
+                </div>
+              ) : null}
               {demoActions ? (
                 <div className="decision-actions">
                   {substrate.review.next_pass === 2 ? <button onClick={() => void act("pass2")}>Record repair pass</button> : null}

@@ -222,6 +222,34 @@ as passing.
 `prove` rejects `--verdict` and `--tier` rather than ignoring them. A caller
 chooses *which* registered harness runs, never what the run concluded.
 
+## The premise needs a human
+
+Discovery is the first ordered authority. A shape cannot reach `proceed` until
+every required field traces to an answer a human gave and approved.
+
+```sh
+node dist/cli.js discover APP-42 discovery.json          # one answer per field
+node dist/cli.js discover APP-42 --approve --by NAME     # the human approves
+node dist/cli.js discovery APP-42                        # draft, approved, or grandfathered
+```
+
+Or approve it in the browser — `loopbreaker serve` shows **Approve the premise**
+on any issue held at discovery. That path is stamped `web` rather than `cli`, so
+a browser approval is distinguishable from a terminal one.
+
+MCP can *record* an interview (`discovery_record`) but has **no approval tool**.
+Recording is the agent's job; approving is not.
+
+Re-recording answers returns an approved record to draft — a premise edited after
+approval would have the gate vouch for text the approver never read. Issues that
+predate the gate are grandfathered, recorded as data so the exempt cohort is
+inspectable.
+
+**This is attribution, not prevention.** An agent with a shell can reach the HTTP
+surface as easily as the CLI, so `web` records which channel a write came through
+— not that a human was behind it. Closing that needs a one-time token delivered
+out of band, which is not built.
+
 Build a behavior's harness and prove it **red** against current HEAD before
 implementing. A harness that is green before the work exists proves nothing.
 
