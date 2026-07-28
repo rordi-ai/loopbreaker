@@ -20,7 +20,166 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 const nodeTypes = { workflow: WorkflowNodeCard };
 const edgeTypes = { workflow: WorkflowEdgeLine };
 
+interface InboxItem {
+  issue_id: string;
+  title: string;
+  description: string;
+  status: string;
+  answers: Array<{ field: string; question: string; answer: string }>;
+}
+
+/**
+ * The approval inbox.
+ *
+ * A separate route rather than a control on the graph page: approving a premise
+ * requires READING it, and the graph has nowhere to put eight questions and
+ * their answers. A bare button on text you cannot see is the rubber-stamping
+ * this gate exists to prevent. Sized for a phone, because that is where the
+ * founder is when this is waiting on them.
+ */
+function Inbox({ onApproved }: { onApproved: () => void }) {
+  const [items, setItems] = useState<InboxItem[] | null>(null);
+  const [approver, setApprover] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setItems(await requestJson<InboxItem[]>("/api/inbox"));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const approve = useCallback(async (issueId: string) => {
+    if (!approver.trim()) {
+      setNotice("Your name is required — it is recorded as the approver.");
+      return;
+    }
+    setNotice(`Approving ${issueId}…`);
+    try {
+      await requestJson(`/api/issues/${encodeURIComponent(issueId)}/discovery/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ approved_by: approver.trim() }),
+      });
+      setNotice(`${issueId} approved. The shape gate is released.`);
+      await load();
+      onApproved();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }, [approver, load, onApproved]);
+
+  return (
+    <main className="app-shell inbox-shell">
+      <h1 className="inbox-title">Premise approvals</h1>
+
+      {items === null ? <p className="inbox-empty">Loading…</p> : null}
+      {items?.length === 0 ? (
+        <p className="inbox-empty">Nothing is waiting on you. Premises appear here once an interview is recorded.</p>
+      ) : null}
+
+      {items?.map((item) => (
+        <section className="inbox-card" key={item.issue_id}>
+          <div className="inbox-card-head">
+            <span className="inbox-issue">{item.issue_id}</span>
+            <h2>{item.title}</h2>
+            <p className="inbox-ask">
+              Read every answer below. Approving records you as the human behind this premise, and
+              every downstream gate then treats it as settled.
+            </p>
+          </div>
+          <dl className="inbox-answers">
+            {item.answers.map((answer) => (
+              <div className="inbox-answer" key={answer.field}>
+                <dt>{answer.field.replaceAll("_", " ")}</dt>
+                <dd className="inbox-question">{answer.question}</dd>
+                <dd className="inbox-text">{answer.answer}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="inbox-actions">
+            <input
+              className="inbox-name"
+              placeholder="Your name"
+              value={approver}
+              onChange={(event) => setApprover(event.target.value)}
+              aria-label="Approver name"
+            />
+            <button onClick={() => void approve(item.issue_id)}>Approve the premise</button>
+          </div>
+        </section>
+      ))}
+      <div className="action-notice" aria-live="polite">{notice}</div>
+    </main>
+  );
+}
+
+type View = "graph" | "inbox";
+
+function currentView(): View {
+  return window.location.pathname.replace(/\/+$/, "") === "/inbox" ? "inbox" : "graph";
+}
+
+/**
+ * One app, two views.
+ *
+ * The inbox began as a separate page with its own header and no way back, which
+ * read as a different product. It is the same substrate seen from the other end:
+ * the graph is "what is the state", the inbox is "what needs me". A shared shell
+ * with a pending count is what makes the second discoverable at all — nobody
+ * visits a URL they were never told about.
+ */
 export function App() {
+  const [view, setView] = useState<View>(currentView);
+  const [pending, setPending] = useState(0);
+
+  useEffect(() => {
+    const onPop = () => setView(currentView());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const refreshPending = useCallback(async () => {
+    try {
+      setPending((await requestJson<unknown[]>("/api/inbox")).length);
+    } catch {
+      // Advisory badge only; a failed count must never break the view.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPending();
+    const timer = window.setInterval(() => void refreshPending(), 10_000);
+    return () => window.clearInterval(timer);
+  }, [refreshPending]);
+
+  const go = useCallback((next: View) => {
+    window.history.pushState({}, "", next === "inbox" ? "/inbox" : "/");
+    setView(next);
+  }, []);
+
+  return (
+    <div className="app-root">
+      <nav className="app-nav">
+        <span className="app-brand">Loopbreaker</span>
+        <div className="app-tabs">
+          <button className={view === "graph" ? "app-tab is-active" : "app-tab"} onClick={() => go("graph")}>
+            Graph
+          </button>
+          <button className={view === "inbox" ? "app-tab is-active" : "app-tab"} onClick={() => go("inbox")}>
+            Needs you{pending > 0 ? <span className="app-badge">{pending}</span> : null}
+          </button>
+        </div>
+      </nav>
+      {view === "inbox" ? <Inbox onApproved={refreshPending} /> : <GraphApp />}
+    </div>
+  );
+}
+
+function GraphApp() {
   const pollingOnly = new URLSearchParams(window.location.search).get("transport") === "poll";
   const [issues, setIssues] = useState<IssueRow[]>([]);
   const [activeIssue, setActiveIssue] = useState("");
@@ -127,26 +286,6 @@ export function App() {
     }
   }, [activeIssue, loadSubstrate]);
 
-  const approveDiscovery = useCallback(async () => {
-    if (!activeIssue) return;
-    const approver = window.prompt("Approve this premise as:");
-    if (!approver?.trim()) {
-      setNotice("Approval needs a name. Nothing was recorded.");
-      return;
-    }
-    setNotice("Recording the approval…");
-    try {
-      await requestJson(`/api/issues/${encodeURIComponent(activeIssue)}/discovery/approve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ approved_by: approver.trim() }),
-      });
-      await loadSubstrate(activeIssue);
-      setNotice("Premise approved. The shape gate is released.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
-    }
-  }, [activeIssue, loadSubstrate]);
 
   const demoActions = substrate?.issue.id === "DEMO-1";
   // LB-29: the approval affordance is NOT demo-gated. It is the one act with no
@@ -185,7 +324,11 @@ export function App() {
               <p>{substrate.shipping.reason}</p>
               {heldAtDiscovery ? (
                 <div className="decision-actions">
-                  <button onClick={() => void approveDiscovery()}>Approve the premise</button>
+                  {/* A LINK, not an action. Approving from here would mean
+                      approving a premise the page does not show — the same
+                      rubber-stamping the gate exists to prevent. The inbox is
+                      where the questions and answers are legible. */}
+                  <a className="decision-cta" href="/inbox">Review the premise in Needs you →</a>
                 </div>
               ) : null}
               {demoActions ? (

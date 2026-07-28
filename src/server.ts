@@ -133,6 +133,24 @@ export function startServer(db: LoopbreakerDb, port = 7331): Promise<{ url: stri
         serveWeb(request, response);
         return;
       }
+      if (request.method === "GET" && parts.join("/") === "api/inbox") {
+        // Everything waiting on the founder, WITH the text they need to judge
+        // it. A bare "approve" button on a record you cannot read is the
+        // rubber-stamping this gate exists to prevent.
+        const pending = db.listIssues().flatMap((issue) => {
+          const record = discoveryState(db, issue.id);
+          if (record.status !== "draft") return [];
+          return [{
+            issue_id: issue.id,
+            title: issue.title,
+            description: issue.description,
+            status: record.status,
+            answers: record.answers,
+          }];
+        });
+        send(response, 200, pending);
+        return;
+      }
       if (request.method === "GET" && parts.join("/") === "api/issues") {
         send(response, 200, db.listIssues());
         return;
@@ -177,6 +195,14 @@ export function startServer(db: LoopbreakerDb, port = 7331): Promise<{ url: stri
         return;
       }
       if (request.method === "GET" && parts[0] === "assets") {
+        serveWeb(request, response);
+        return;
+      }
+      // Any other GET is a client-side route (e.g. /inbox): serve the SPA shell
+      // and let the app resolve it. Without this a route is only reachable by
+      // in-app navigation, so a bookmarked or shared link 404s -- which is
+      // exactly how the approval inbox would be opened on a phone.
+      if (request.method === "GET" && parts[0] !== "api") {
         serveWeb(request, response);
         return;
       }
