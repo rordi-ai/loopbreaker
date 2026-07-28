@@ -115,6 +115,19 @@
       "proves": [
         "LB-31-B1"
       ]
+    },
+    {
+      "id": "lb-32-b1",
+      "tier": "wired",
+      "runner": "vitest-wired",
+      "target": "test/wired/lb-32-b1.test.ts",
+      "purpose": "The ship decision names behaviors verified on proof never observed failing.",
+      "prerequisites": [
+        "pnpm build"
+      ],
+      "proves": [
+        "LB-32-B1"
+      ]
     }
   ]
 }

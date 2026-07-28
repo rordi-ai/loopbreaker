@@ -552,6 +552,17 @@ function substrate(db, issueId) {
   const waived = enforced.filter((behavior) => waiverByBehavior.has(behavior.id));
   const resolved = new Set([...verified, ...waived].map((behavior) => behavior.id));
   const unresolved = enforced.filter((behavior) => !resolved.has(behavior.id));
+  const unbaselinedIds = new Set(
+    db.raw.prepare(`
+      SELECT b.id AS id FROM behaviors b
+      WHERE b.issue_id = ? AND b.status = 'verified'
+        AND NOT EXISTS (
+          SELECT 1 FROM evidence e
+          WHERE e.behavior_id = b.id AND e.verdict = 'pass' AND e.executed = 1 AND e.baselined = 1
+        )
+    `).all(issueId).map((row) => row.id)
+  );
+  const unbaselined = [...unbaselinedIds];
   let shipping;
   const discovery = discoveryState(db, issueId);
   if (!discovery.satisfied) {
@@ -563,6 +574,7 @@ function substrate(db, issueId) {
       verified_total: verified.length,
       waived_total: waived.length,
       unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      unbaselined_behavior_ids: unbaselined,
       gate: "discovery",
       planning_score: planning.score
     };
@@ -575,6 +587,7 @@ function substrate(db, issueId) {
       verified_total: verified.length,
       waived_total: waived.length,
       unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      unbaselined_behavior_ids: unbaselined,
       gate: "shape",
       planning_score: planning.score
     };
@@ -587,6 +600,7 @@ function substrate(db, issueId) {
       verified_total: verified.length,
       waived_total: waived.length,
       unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      unbaselined_behavior_ids: unbaselined,
       gate: "planning",
       planning_score: planning.score
     };
@@ -599,6 +613,7 @@ function substrate(db, issueId) {
       verified_total: verified.length,
       waived_total: waived.length,
       unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      unbaselined_behavior_ids: unbaselined,
       gate: "planning_review",
       planning_score: planning.score
     };
@@ -611,6 +626,7 @@ function substrate(db, issueId) {
       verified_total: verified.length,
       waived_total: waived.length,
       unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      unbaselined_behavior_ids: unbaselined,
       gate: "verification",
       planning_score: planning.score
     };
@@ -623,6 +639,7 @@ function substrate(db, issueId) {
       verified_total: verified.length,
       waived_total: waived.length,
       unresolved_behavior_ids: [],
+      unbaselined_behavior_ids: unbaselined,
       gate: "ready",
       planning_score: planning.score
     };
@@ -635,6 +652,7 @@ function substrate(db, issueId) {
       verified_total: verified.length,
       waived_total: 0,
       unresolved_behavior_ids: [],
+      unbaselined_behavior_ids: unbaselined,
       gate: "ready",
       planning_score: planning.score
     };

@@ -263,6 +263,14 @@ export interface ShipState {
   verified_total: number;
   waived_total: number;
   unresolved_behavior_ids: string[];
+  /**
+   * LB-32 — verified behaviors whose passing proof was never observed failing.
+   * Advisory, not blocking: a behavior whose code already existed can never
+   * produce a red baseline. Surfaced HERE, at the decision, because buried in an
+   * evidence column it took a SQLite query to find — and the HEALTH-1 dry run
+   * shipped all three unbaselined while its plan claimed red-first.
+   */
+  unbaselined_behavior_ids: string[];
   gate: "discovery" | "shape" | "planning" | "planning_review" | "verification" | "ready";
   planning_score: number;
 }

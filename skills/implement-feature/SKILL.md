@@ -49,10 +49,17 @@ For each behavior, in this order:
    is a reviewed file; that is what keeps `prove` from being arbitrary execution.
 3. **Bind it: `loopbreaker bind BEHAVIOR --harness ID`.** Both directions must
    agree — the behavior names the harness and the entry names the behavior back.
-4. **Prove it RED: `loopbreaker prove BEHAVIOR`.** It must fail before the code
-   exists. A harness that is green before the work proves nothing, and the red run
-   is what records the baseline. If it passes here, the harness is broken — fix
-   the harness, not the contract.
+4. **Prove it RED through the gate: `loopbreaker prove BEHAVIOR`.** It must fail
+   before the code exists. A harness that is green before the work proves nothing.
+
+   **Run `prove`, not your test runner.** Watching `bun test` go red in your
+   terminal records nothing: the substrate keeps no failure, `baselined` stays 0,
+   and the ship decision will later name the behavior as never having been seen
+   to fail. Red observed outside the gate is a claim, not evidence — and a plan
+   that says "observed red before implementation" while the substrate disagrees
+   is exactly the overclaim this pipeline exists to catch.
+
+   If it passes here, the harness is broken — fix the harness, not the contract.
 5. **Now implement.** Keep changes minimal, trace each edit to a behavior ID, and
    wire the real production path — not a class, adapter, mock, or test seam.
 6. **Prove it GREEN.** A `live`-tier harness additionally needs `--live`.

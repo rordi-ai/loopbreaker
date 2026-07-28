@@ -245,6 +245,18 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
   const waived = enforced.filter((behavior) => waiverByBehavior.has(behavior.id));
   const resolved = new Set([...verified, ...waived].map((behavior) => behavior.id));
   const unresolved = enforced.filter((behavior) => !resolved.has(behavior.id));
+  // LB-32 — verified on a pass that was never preceded by an executed failure.
+  const unbaselinedIds = new Set(
+    (db.raw.prepare(`
+      SELECT b.id AS id FROM behaviors b
+      WHERE b.issue_id = ? AND b.status = 'verified'
+        AND NOT EXISTS (
+          SELECT 1 FROM evidence e
+          WHERE e.behavior_id = b.id AND e.verdict = 'pass' AND e.executed = 1 AND e.baselined = 1
+        )
+    `).all(issueId) as Array<{ id: string }>).map((row) => row.id),
+  );
+  const unbaselined = [...unbaselinedIds];
 
   let shipping: ShipState;
   // LB-28 — discovery gates ahead of shape, so an issue held for a missing
@@ -257,14 +269,16 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
         ? "No discovery record exists; the premise has no human behind it."
         : "The discovery record is still a draft and has not been approved.",
       enforced_total: enforced.length, verified_total: verified.length, waived_total: waived.length,
-      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id), gate: "discovery", planning_score: planning.score,
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      unbaselined_behavior_ids: unbaselined, gate: "discovery", planning_score: planning.score,
     };
   } else if (!shape.ready) {
     shipping = {
       disposition: "hold", ready: false,
       reason: `Shape is not ready: ${shape.blockers.map((blocker) => blocker.code).join(", ")}.`,
       enforced_total: enforced.length, verified_total: verified.length, waived_total: waived.length,
-      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id), gate: "shape", planning_score: planning.score,
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      unbaselined_behavior_ids: unbaselined, gate: "shape", planning_score: planning.score,
     };
   } else if (!planning.ready) {
     shipping = {
@@ -275,6 +289,7 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       verified_total: verified.length,
       waived_total: waived.length,
       unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      unbaselined_behavior_ids: unbaselined,
       gate: "planning",
       planning_score: planning.score,
     };
@@ -283,7 +298,8 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       disposition: "hold", ready: false,
       reason: `Planning review is ${planningReview.disposition}; independent approval is required before implementation.`,
       enforced_total: enforced.length, verified_total: verified.length, waived_total: waived.length,
-      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id), gate: "planning_review", planning_score: planning.score,
+      unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      unbaselined_behavior_ids: unbaselined, gate: "planning_review", planning_score: planning.score,
     };
   } else if (unresolved.length > 0) {
     shipping = {
@@ -294,6 +310,7 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       verified_total: verified.length,
       waived_total: waived.length,
       unresolved_behavior_ids: unresolved.map((behavior) => behavior.id),
+      unbaselined_behavior_ids: unbaselined,
       gate: "verification",
       planning_score: planning.score,
     };
@@ -305,7 +322,7 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       enforced_total: enforced.length,
       verified_total: verified.length,
       waived_total: waived.length,
-      unresolved_behavior_ids: [],
+      unresolved_behavior_ids: [], unbaselined_behavior_ids: unbaselined,
       gate: "ready",
       planning_score: planning.score,
     };
@@ -317,7 +334,7 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       enforced_total: enforced.length,
       verified_total: verified.length,
       waived_total: 0,
-      unresolved_behavior_ids: [],
+      unresolved_behavior_ids: [], unbaselined_behavior_ids: unbaselined,
       gate: "ready",
       planning_score: planning.score,
     };
