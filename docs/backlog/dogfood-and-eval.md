@@ -205,7 +205,7 @@ scenarios, same seeds.
 | Claim | Scenario seed | Primary metric | Depends on |
 |---|---|---|---|
 | Bounding stops review loops | a P1 whose plausible repair introduces a new P2 — the canonical cycling trigger | passes-to-terminate; **whether arm A terminates at all** | nothing (measurable now) |
-| Premise gate catches injection | a shape with one unsourced field, in the LB-20 tailnet pattern | refusal rate on injected fields, **plus a negative control**: a fully founder-sourced shape, to catch a gate that simply refuses everything | LB-25 **implemented** (today only shaped/planned) |
+| Premise gate catches injection | a shape with one unsourced field | refusal rate on injected fields, **plus a negative control**: a fully founder-sourced shape, to catch a gate that simply refuses everything | LB-25 **implemented** (today only shaped/planned) |
 | Gates catch real defects | plans with a seeded planning defect — unowned behavior, unwired proof, absent rollback | precision/recall of planning-health + planning-review vs. ground-truth labels | nothing (measurable now) |
 | Cost and honesty of the verdict | full issues run end-to-end per arm | tokens, wall-clock, and **false-ship rate** = declared-shippable ∩ actually-has-unverified-enforced-behavior | **LB-27** — see below |
 
@@ -215,8 +215,15 @@ before LB-27 would measure the agent's willingness to self-report, not the gate.
 
 **Free real data.** LB-21's own planning-review history is already a ground-truth datapoint: two
 `changes_required` passes on a genuine mutation-inventory inconsistency (`LB-21-PLAN-F1`), converging
-at pass 3. LB-20's tailnet finding is a documented, real premise-injection instance with a known
-correct verdict. Both are corpus entries that cost nothing to create because they actually happened.
+at pass 3. The 2026-07-27 dry run is the other: an agent approved a premise on the founder's behalf
+and wrote their name into `approved_by`, caught only by provenance. Both are corpus entries that cost
+nothing to create because they actually happened.
+
+**Correction (2026-07-28):** earlier drafts of this document and of the discovery-interview skill
+cited LB-20's tailnet requirement as a worked example of premise injection. That was wrong. Tailnet
+reachability was part of the initial plan — LB-20's `smallest_slice`, `success_signal` and `outcome`
+all name it, and the bet is explicitly modelled on the Collie launcher, which is served over
+Tailscale. It is not an injection example and must not be presented as one.
 
 **The eval executor and the behavior harness are the same machine.** `loopbreaker prove` runs a ref
 and scores by exit code; an eval scenario runs a ref and scores against ground truth. Build one.
@@ -583,7 +590,7 @@ founder can judge that, and a reviewer claiming otherwise would be the premise-i
 wearing a reviewer's hat. It checks whether the record honestly represents the human:
 
 - Is every field a real answer, or is some of it the interviewer's prose wearing the founder's
-  name? That is exactly the LB-20 tailnet failure.
+  name? An agent did exactly this on 2026-07-27, approving on the founder's behalf.
 - Did the options lead the witness — three choices all pointing one way?
 - Do answers contradict each other? `MKTG-EMAIL-1` pairs appetite "whatever it takes" with a
   deliberately tiny `smallest_slice`, and leaves a template library in scope while the slice

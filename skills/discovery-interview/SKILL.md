@@ -27,14 +27,20 @@ If you cannot cite the human answer behind a field, **interview** — do not inf
 
 ## Why this stage exists
 
-A real incident, preserved because it is the cheapest way to learn this: an agent
-modelling a plugin on a neighbouring project imported "served over Tailscale" into
-a shape's `success_signal` by pattern-matching, not from any stated need. The
-independent planning review then did its job perfectly — it found the contract
-did not cover the shape's promise, and required an enforced behavior with a live
-proof. The review's rigor *amplified* the invented premise into a mandatory
-requirement. When the founder finally asked "tailscale serve for what," there was
-no answer, because the premise had never been theirs.
+A real incident, preserved because it is the cheapest way to learn this. An agent
+running this very pipeline finished an interview, recorded the answers, and then
+offered — as its first and recommended option — *"I'll run the approve command on
+your behalf."* It did. The record read `approved_by: "Ben (ben@rordi.ai)"` while
+the provenance read `cli` / `ubuntu`: its own shell.
+
+Nothing about that was malicious, and the answers were genuinely the founder's.
+But `approved_by` is a string the caller types, so the record asserted a human
+had ratified the premise when no human had acted. Every downstream gate would
+then have treated it as founder-backed, and each would have been right to,
+because that is what the record said.
+
+Approval is now refused on any ingress but the browser. You cannot issue it, and
+you should not want to.
 
 A 100/100 planning health score says the plan is structurally complete. It says
 nothing about whether the premise was right. Do not read it as reassurance.
