@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { LoopbreakerDb } from "../src/db.js";
-import { createWaiver, DomainError, importContract, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertFinding, upsertPlanningFinding, verifyBehavior, DISCOVERY_FIELDS, approveDiscovery, discoveryState, recordDiscovery } from "../src/domain.js";
+import { createWaiver, DomainError, importContract, openReviewRound, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertFinding, upsertPlanningFinding, verifyBehavior, DISCOVERY_FIELDS, approveDiscovery, discoveryState, recordDiscovery } from "../src/domain.js";
 import type { PlanningProfile, ShapeProfile } from "../src/types.js";
 import { DEMO_ISSUE, seedDemo } from "../src/seed.js";
 
@@ -124,6 +124,101 @@ describe("bounded review and shipping authority", () => {
     seedDemo(db);
     expect(() => recordPass(db, { issueId: DEMO_ISSUE, passNumber: 4, verdict: "fail", summary: "Again." }))
       .toThrowError(DomainError);
+  });
+
+  /**
+   * LB-34 — a round that fails out is not the end of the work.
+   *
+   * The three-pass cap stays exactly as it was; what these cover is that
+   * spending it names a next action instead of a dead end, and that entering
+   * that next action costs an explicit human decision.
+   */
+  describe("review rounds", () => {
+    function exhaustRoundOne(db: LoopbreakerDb): void {
+      seedDemo(db);
+      recordPass(db, { issueId: DEMO_ISSUE, passNumber: 2, verdict: "fail", summary: "Repairs incomplete." });
+      recordPass(db, { issueId: DEMO_ISSUE, passNumber: 3, verdict: "fail", summary: "Terminal decision." });
+    }
+
+    it("names a new implementation round when three passes end without a pass", () => {
+      const db = database();
+      exhaustRoundOne(db);
+
+      const state = substrate(db, DEMO_ISSUE);
+      expect(state.review.pass_count).toBe(3);
+      expect(state.review.round).toBe(1);
+      expect(state.review.round_exhausted).toBe(true);
+      expect(state.review.complete).toBe(true);
+      expect(state.review.next_action).toBe("new_implementation_round");
+      // The cap itself is untouched.
+      expect(state.review.automatic_pass_four).toBe(false);
+    });
+
+    it("restarts pass numbering in the new round while keeping the whole history", () => {
+      const db = database();
+      exhaustRoundOne(db);
+
+      const opened = openReviewRound(db, {
+        issueId: DEMO_ISSUE,
+        reason: "Two P1 findings repaired; the repairs need review.",
+        authorizedBy: "founder@example.com",
+      });
+
+      expect(opened.review.round).toBe(2);
+      expect(opened.review.pass_count).toBe(0);
+      expect(opened.review.next_pass).toBe(1);
+      expect(opened.review.next_action).toBe("comprehensive");
+      expect(opened.review.complete).toBe(false);
+      expect(opened.review.round_exhausted).toBe(false);
+      // Nothing is erased: the failed round remains on the record.
+      expect(opened.review.total_passes).toBe(3);
+      expect(opened.review.rounds).toEqual([
+        expect.objectContaining({ round: 2, authorized_by: "founder@example.com" }),
+      ]);
+
+      const reviewed = recordPass(db, { issueId: DEMO_ISSUE, passNumber: 1, verdict: "pass", summary: "Repairs verified." });
+      expect(reviewed.review.pass_count).toBe(1);
+      expect(reviewed.review.complete).toBe(true);
+      expect(reviewed.review.total_passes).toBe(4);
+    });
+
+    it("refuses a new round while the current one still has a pass left", () => {
+      const db = database();
+      seedDemo(db);
+      expect(() => openReviewRound(db, { issueId: DEMO_ISSUE, reason: "Impatient.", authorizedBy: "someone" }))
+        .toThrowError(/still has pass/i);
+    });
+
+    it("refuses a new round after a round that passed", () => {
+      const db = database();
+      seedDemo(db);
+      recordPass(db, { issueId: DEMO_ISSUE, passNumber: 2, verdict: "pass", summary: "Repairs verified." });
+      expect(() => openReviewRound(db, { issueId: DEMO_ISSUE, reason: "One more look.", authorizedBy: "someone" }))
+        .toThrowError(/nothing to re-open/i);
+    });
+
+    it("refuses to open a round without a human authorizing it", () => {
+      const db = database();
+      exhaustRoundOne(db);
+      expect(() => openReviewRound(db, { issueId: DEMO_ISSUE, reason: "Findings repaired.", authorizedBy: "  " }))
+        .toThrowError(/authorizing/i);
+      expect(() => openReviewRound(db, { issueId: DEMO_ISSUE, reason: " ", authorizedBy: "founder@example.com" }))
+        .toThrowError(/reason/i);
+    });
+
+    it("still rejects a fourth pass inside the new round", () => {
+      const db = database();
+      exhaustRoundOne(db);
+      openReviewRound(db, { issueId: DEMO_ISSUE, reason: "Repairs landed.", authorizedBy: "founder@example.com" });
+
+      recordPass(db, { issueId: DEMO_ISSUE, passNumber: 1, verdict: "fail", summary: "Still wrong." });
+      recordPass(db, { issueId: DEMO_ISSUE, passNumber: 2, verdict: "fail", summary: "Still wrong." });
+      recordPass(db, { issueId: DEMO_ISSUE, passNumber: 3, verdict: "fail", summary: "Terminal again." });
+
+      expect(() => recordPass(db, { issueId: DEMO_ISSUE, passNumber: 4, verdict: "fail", summary: "Once more." }))
+        .toThrowError(DomainError);
+      expect(substrate(db, DEMO_ISSUE).review.next_action).toBe("new_implementation_round");
+    });
   });
 
   it("ships after proportionate wired proof verifies the remaining behavior", () => {

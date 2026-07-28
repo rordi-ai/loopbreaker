@@ -33,6 +33,7 @@ export const PROVENANCE_TABLES = [
   "shape_assessments",
   "planning_review_passes",
   "planning_findings",
+  "review_rounds",
 ] as const;
 
 /**
@@ -117,13 +118,14 @@ export class LoopbreakerDb {
       CREATE TABLE IF NOT EXISTS review_passes (
         id TEXT PRIMARY KEY,
         issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        round INTEGER NOT NULL DEFAULT 1,
         pass_number INTEGER NOT NULL CHECK (pass_number BETWEEN 1 AND 3),
         kind TEXT NOT NULL CHECK (kind IN ('comprehensive', 'repair_verification', 'decision')),
         verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail')),
         summary TEXT NOT NULL,
         legacy_pass_count INTEGER,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(issue_id, pass_number)
+        UNIQUE(issue_id, round, pass_number)
       );
 
       CREATE TABLE IF NOT EXISTS evidence (
@@ -317,6 +319,25 @@ export class LoopbreakerDb {
       }
     }
 
+    // LB-34 — review rounds. A round is still capped at three passes; the round
+    // number is what keeps that cap from being a dead end. Existing passes are
+    // round 1, so a database written before rounds existed reads correctly.
+    this.raw.exec(`
+      CREATE TABLE IF NOT EXISTS review_rounds (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        round INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        authorized_by TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        trigger_type TEXT,
+        triggered_by TEXT,
+        trigger_data TEXT,
+        UNIQUE (issue_id, round)
+      );
+      CREATE INDEX IF NOT EXISTS idx_review_rounds_issue ON review_rounds(issue_id);
+    `);
+
     // LB-21 — additive, nullable provenance columns on every written table.
     // Existing rows stay null and read as the legacy source: the causing
     // ingress is unknowable retroactively, so no backfill is attempted.
@@ -327,6 +348,53 @@ export class LoopbreakerDb {
       );
       for (const column of ["trigger_type", "triggered_by", "trigger_data"]) {
         if (!existing.has(column)) this.raw.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
+      }
+    }
+
+    // The uniqueness key moves from (issue, pass) to (issue, round, pass), so
+    // round two may hold its own pass one. SQLite cannot alter a UNIQUE in
+    // place; the rebuild is detected from the stored DDL rather than a version
+    // counter, which keeps it idempotent. Existing passes become round 1.
+    const reviewPassDdl = (this.raw.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'review_passes'",
+    ).get() as { sql: string } | undefined)?.sql ?? "";
+
+    if (reviewPassDdl && !reviewPassDdl.includes("round")) {
+      this.raw.exec("PRAGMA foreign_keys = OFF");
+      this.raw.exec("BEGIN IMMEDIATE");
+      try {
+        this.raw.exec(`
+          CREATE TABLE review_passes_lb34 (
+            id TEXT PRIMARY KEY,
+            issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+            round INTEGER NOT NULL DEFAULT 1,
+            pass_number INTEGER NOT NULL CHECK (pass_number BETWEEN 1 AND 3),
+            kind TEXT NOT NULL CHECK (kind IN ('comprehensive', 'repair_verification', 'decision')),
+            verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail')),
+            summary TEXT NOT NULL,
+            legacy_pass_count INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            trigger_type TEXT,
+            triggered_by TEXT,
+            trigger_data TEXT,
+            UNIQUE (issue_id, round, pass_number)
+          );
+          INSERT INTO review_passes_lb34
+            (id, issue_id, round, pass_number, kind, verdict, summary, legacy_pass_count, created_at,
+             trigger_type, triggered_by, trigger_data)
+          SELECT id, issue_id, 1, pass_number, kind, verdict, summary, legacy_pass_count, created_at,
+                 trigger_type, triggered_by, trigger_data
+          FROM review_passes;
+          DROP TABLE review_passes;
+          ALTER TABLE review_passes_lb34 RENAME TO review_passes;
+          CREATE INDEX IF NOT EXISTS idx_review_passes_issue ON review_passes(issue_id);
+        `);
+        this.raw.exec("COMMIT");
+      } catch (error) {
+        this.raw.exec("ROLLBACK");
+        throw error;
+      } finally {
+        this.raw.exec("PRAGMA foreign_keys = ON");
       }
     }
   }

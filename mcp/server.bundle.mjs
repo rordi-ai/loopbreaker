@@ -21122,7 +21122,8 @@ var PROVENANCE_TABLES = [
   "planning_profiles",
   "shape_assessments",
   "planning_review_passes",
-  "planning_findings"
+  "planning_findings",
+  "review_rounds"
 ];
 var DEFAULT_PROVENANCE = { trigger_type: "cli", triggered_by: "unknown", trigger_data: null };
 var LoopbreakerDb = class {
@@ -21191,13 +21192,14 @@ var LoopbreakerDb = class {
       CREATE TABLE IF NOT EXISTS review_passes (
         id TEXT PRIMARY KEY,
         issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        round INTEGER NOT NULL DEFAULT 1,
         pass_number INTEGER NOT NULL CHECK (pass_number BETWEEN 1 AND 3),
         kind TEXT NOT NULL CHECK (kind IN ('comprehensive', 'repair_verification', 'decision')),
         verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail')),
         summary TEXT NOT NULL,
         legacy_pass_count INTEGER,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(issue_id, pass_number)
+        UNIQUE(issue_id, round, pass_number)
       );
 
       CREATE TABLE IF NOT EXISTS evidence (
@@ -21375,12 +21377,68 @@ var LoopbreakerDb = class {
         this.raw.exec("PRAGMA foreign_keys = ON");
       }
     }
+    this.raw.exec(`
+      CREATE TABLE IF NOT EXISTS review_rounds (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        round INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        authorized_by TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        trigger_type TEXT,
+        triggered_by TEXT,
+        trigger_data TEXT,
+        UNIQUE (issue_id, round)
+      );
+      CREATE INDEX IF NOT EXISTS idx_review_rounds_issue ON review_rounds(issue_id);
+    `);
     for (const table of PROVENANCE_TABLES) {
       const existing = new Set(
         this.raw.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name)
       );
       for (const column of ["trigger_type", "triggered_by", "trigger_data"]) {
         if (!existing.has(column)) this.raw.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
+      }
+    }
+    const reviewPassDdl = this.raw.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'review_passes'"
+    ).get()?.sql ?? "";
+    if (reviewPassDdl && !reviewPassDdl.includes("round")) {
+      this.raw.exec("PRAGMA foreign_keys = OFF");
+      this.raw.exec("BEGIN IMMEDIATE");
+      try {
+        this.raw.exec(`
+          CREATE TABLE review_passes_lb34 (
+            id TEXT PRIMARY KEY,
+            issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+            round INTEGER NOT NULL DEFAULT 1,
+            pass_number INTEGER NOT NULL CHECK (pass_number BETWEEN 1 AND 3),
+            kind TEXT NOT NULL CHECK (kind IN ('comprehensive', 'repair_verification', 'decision')),
+            verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail')),
+            summary TEXT NOT NULL,
+            legacy_pass_count INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            trigger_type TEXT,
+            triggered_by TEXT,
+            trigger_data TEXT,
+            UNIQUE (issue_id, round, pass_number)
+          );
+          INSERT INTO review_passes_lb34
+            (id, issue_id, round, pass_number, kind, verdict, summary, legacy_pass_count, created_at,
+             trigger_type, triggered_by, trigger_data)
+          SELECT id, issue_id, 1, pass_number, kind, verdict, summary, legacy_pass_count, created_at,
+                 trigger_type, triggered_by, trigger_data
+          FROM review_passes;
+          DROP TABLE review_passes;
+          ALTER TABLE review_passes_lb34 RENAME TO review_passes;
+          CREATE INDEX IF NOT EXISTS idx_review_passes_issue ON review_passes(issue_id);
+        `);
+        this.raw.exec("COMMIT");
+      } catch (error2) {
+        this.raw.exec("ROLLBACK");
+        throw error2;
+      } finally {
+        this.raw.exec("PRAGMA foreign_keys = ON");
       }
     }
   }
@@ -21768,10 +21826,15 @@ function substrate(db, issueId) {
       planning_score: planning.score
     };
   }
-  const count = reviewPasses.length;
-  const latest = reviewPasses.at(-1);
-  const complete = count === 3 || latest?.verdict === "pass";
+  const reviewRounds = db.raw.prepare("SELECT * FROM review_rounds WHERE issue_id = ? ORDER BY round").all(issue2.id);
+  const currentRound = reviewRounds.at(-1)?.round ?? 1;
+  const roundPasses = reviewPasses.filter((pass) => (pass.round ?? 1) === currentRound);
+  const count = roundPasses.length;
+  const latest = roundPasses.at(-1);
+  const passed = latest?.verdict === "pass";
+  const complete = count === 3 || passed;
   const nextPass = complete ? null : count + 1;
+  const roundExhausted = count === 3 && !passed;
   return {
     issue: issue2,
     contract: {
@@ -21796,10 +21859,19 @@ function substrate(db, issueId) {
       pass_count: count,
       current_pass: latest?.pass_number ?? null,
       next_pass: nextPass,
-      next_action: nextPass ? reviewKind(nextPass) : "none",
+      next_action: nextPass ? reviewKind(nextPass) : roundExhausted ? "new_implementation_round" : "none",
       automatic_pass_four: false,
       decision_required: count === 2 && latest?.verdict === "fail",
-      complete
+      complete,
+      round: currentRound,
+      total_passes: reviewPasses.length,
+      round_exhausted: roundExhausted,
+      rounds: reviewRounds.map((round) => ({
+        round: round.round,
+        reason: round.reason,
+        authorized_by: round.authorized_by,
+        created_at: round.created_at
+      }))
     },
     shipping
   };
@@ -21937,10 +22009,13 @@ function recordPass(db, input) {
   if (!Number.isInteger(input.passNumber) || input.passNumber < 1 || input.passNumber > 3) {
     throw new DomainError("invalid_pass", "Review passes are limited to 1, 2, and 3.", "There is no automatic pass 4.");
   }
-  const existing = current.review_passes.find((pass) => pass.pass_number === input.passNumber);
+  const round = current.review.round;
+  const existing = current.review_passes.find(
+    (pass) => pass.pass_number === input.passNumber && (pass.round ?? 1) === round
+  );
   if (existing) {
     if (existing.verdict === input.verdict && existing.summary === input.summary) return current;
-    throw new DomainError("pass_conflict", `Pass ${input.passNumber} already has a different result.`);
+    throw new DomainError("pass_conflict", `Pass ${input.passNumber} of round ${round} already has a different result.`);
   }
   if (!current.shape.ready) {
     throw new DomainError("shape_not_ready", "Code review cannot continue until shape disposition is proceed and the shape is complete.");
@@ -21959,12 +22034,42 @@ function recordPass(db, input) {
     throw new DomainError("pass_out_of_order", `Expected pass ${current.review.pass_count + 1}, received pass ${input.passNumber}.`);
   }
   if (current.review.complete) {
-    throw new DomainError("review_complete", "Review is already complete; another pass would expand the review loop.");
+    throw new DomainError(
+      "review_complete",
+      `Round ${round} is already complete; another pass would expand the review loop.`,
+      current.review.round_exhausted ? `Repair the open findings, then open the next round with loopbreaker review-round ${input.issueId} --reason TEXT --authorized-by NAME.` : void 0
+    );
   }
   db.raw.prepare(`
-    INSERT INTO review_passes (id, issue_id, pass_number, kind, verdict, summary, trigger_type, triggered_by, trigger_data)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(randomUUID(), input.issueId, input.passNumber, reviewKind(input.passNumber), input.verdict, input.summary, ...db.provenanceValues());
+    INSERT INTO review_passes (id, issue_id, round, pass_number, kind, verdict, summary, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, round, input.passNumber, reviewKind(input.passNumber), input.verdict, input.summary, ...db.provenanceValues());
+  return substrate(db, input.issueId);
+}
+function openReviewRound(db, input) {
+  const current = substrate(db, input.issueId);
+  if (!input.reason.trim()) {
+    throw new DomainError("missing_reason", "Opening a new review round requires a reason.");
+  }
+  if (!input.authorizedBy.trim()) {
+    throw new DomainError(
+      "missing_authorization",
+      "Opening a new review round requires the name of the person authorizing it.",
+      "A round is extended by a human decision, never by an agent deciding it needs one more try."
+    );
+  }
+  if (!current.review.round_exhausted) {
+    throw new DomainError(
+      "round_not_exhausted",
+      current.review.complete ? `Round ${current.review.round} passed; there is nothing to re-open.` : `Round ${current.review.round} still has pass ${current.review.next_pass} available.`,
+      "A new round is only for a round that spent all three passes without passing."
+    );
+  }
+  const nextRound = current.review.round + 1;
+  db.raw.prepare(`
+    INSERT INTO review_rounds (id, issue_id, round, reason, authorized_by, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, nextRound, input.reason.trim(), input.authorizedBy.trim(), ...db.provenanceValues());
   return substrate(db, input.issueId);
 }
 function upsertFinding(db, input) {
@@ -23053,6 +23158,27 @@ async function runMcp(dbPath) {
     async (input) => {
       try {
         return content(recordPass(db, { issueId: input.issue_id, passNumber: input.pass_number, verdict: input.verdict, summary: input.summary }), db.path);
+      } catch (error2) {
+        return toolError(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "review_open_round",
+    {
+      description: "Open a new implementation round after a review round spent all three passes without passing. The open findings are the work list: repair them, then review again from pass one. Refused while the current round still has a pass left, and refused after a round that passed. Requires the name of the human authorizing it.",
+      inputSchema: {
+        issue_id: external_exports.string().min(1),
+        reason: external_exports.string().min(1),
+        authorized_by: external_exports.string().min(1)
+      }
+    },
+    async (input) => {
+      try {
+        return content(
+          openReviewRound(db, { issueId: input.issue_id, reason: input.reason, authorizedBy: input.authorized_by }),
+          db.path
+        );
       } catch (error2) {
         return toolError(error2);
       }

@@ -3,7 +3,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { DomainError, approveDiscovery, bindHarness, demoteUnexecuted, discoveryState, recordDiscovery, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertPlanningFinding, verifyBehavior, createWaiver, importContract } from "./domain.js";
+import { DomainError, approveDiscovery, bindHarness, demoteUnexecuted, discoveryState, recordDiscovery, openReviewRound, planningHealth, recordEvidence, recordPass, recordPlanning, recordPlanningReviewPass, recordShape, substrate, upsertPlanningFinding, verifyBehavior, createWaiver, importContract } from "./domain.js";
 import { loadRegistry } from "./harness.js";
 import { proveBehavior } from "./prove.js";
 import { cliActor, openDb, type LoopbreakerDb } from "./db.js";
@@ -36,6 +36,7 @@ Usage:
   loopbreaker link --clear [--db PATH]         Clear the active issue binding
   loopbreaker prime [ISSUE] [--db PATH]        Compose the deterministic prime block
   loopbreaker pass ISSUE --pass N --verdict V --summary TEXT
+  loopbreaker review-round ISSUE --reason TEXT --authorized-by NAME
   loopbreaker evidence ISSUE --behavior ID --tier T --verdict V --summary TEXT [--source URI]
   loopbreaker verify BEHAVIOR --evidence ID
   loopbreaker discover ISSUE FILE              Record the founder interview answers
@@ -95,7 +96,18 @@ See examples/issue-contract.json in the loopbreaker repository.`,
   substrate: "loopbreaker substrate ISSUE [--db PATH]\n\nReturn behaviors, evidence, findings, passes, waivers, and derived ship state.",
   link: "loopbreaker link ISSUE [--db PATH]\nloopbreaker link --show [--db PATH]\nloopbreaker link --clear [--db PATH]\n\nBind, show, or clear the one active issue persisted for this repository's loopbreaker state.",
   prime: "loopbreaker prime [ISSUE] [--db PATH]\n\nCompose the single deterministic prime block for ISSUE, or the linked active issue when ISSUE is omitted: the ordered authority chain, the single next allowed action, open blocking findings, and unverified enforced behaviors. Returns both the structured block and its rendered text.",
-  pass: "loopbreaker pass ISSUE --pass 1|2|3 --verdict pass|fail --summary TEXT [--db PATH]\n\nRecord only the next pass. Pass 4 is rejected.",
+  pass: "loopbreaker pass ISSUE --pass 1|2|3 --verdict pass|fail --summary TEXT [--db PATH]\n\nRecord only the next pass of the current round. Pass 4 is rejected; a round that spends all three without passing continues as a new round, not a fourth pass.",
+  "review-round": `loopbreaker review-round ISSUE --reason TEXT --authorized-by NAME [--db PATH]
+
+Open a new implementation round after a review round failed out.
+
+Three passes is a budget, not a verdict on the work. When a round ends without a
+pass, the open findings are the work list: implement the repairs, then review
+again from pass one of the next round.
+
+Refused while the current round still has a pass left, and refused after a round
+that passed. Requires a human name: extending the work costs a decision that
+someone signs, which is what keeps a bounded review from becoming an open loop.`,
   evidence: "loopbreaker evidence ISSUE [--behavior ID] --tier unit|wired|live --verdict pass|fail --summary TEXT [--source URI] [--db PATH]",
   verify: "loopbreaker verify BEHAVIOR --evidence ID [--db PATH]\n\nVerify a behavior with passing evidence attached to that behavior.",
   waive: "loopbreaker waive ISSUE --behavior ID --rationale TEXT --approved-by NAME [--db PATH]\n\nCreate durable named debt for one enforced behavior.",
@@ -548,6 +560,20 @@ async function main(): Promise<void> {
       const passNumber = Number(required(flags, "pass"));
       const verdict = oneOf(required(flags, "verdict"), ["pass", "fail"] as const, "--verdict");
       output(recordPass(db, { issueId, passNumber, verdict, summary: required(flags, "summary") }), db);
+      return;
+    }
+    if (command === "review-round") {
+      const issueId = positional[1];
+      if (!issueId) throw new DomainError("missing_issue", "An issue ID is required.");
+      output(
+        openReviewRound(db, {
+          issueId,
+          reason: required(flags, "reason"),
+          authorizedBy: required(flags, "authorized-by"),
+        }),
+        db,
+        [`loopbreaker pass ${issueId} --pass 1 --verdict V --summary TEXT`],
+      );
       return;
     }
     if (command === "evidence") {

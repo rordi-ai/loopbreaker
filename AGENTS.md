@@ -32,6 +32,14 @@ The domain rules are non-negotiable:
   planning-review approval in that order.
 - Planning review and implementation review each use at most three passes:
   comprehensive, repair verification, and decision only. Neither has pass four.
+- Three passes is a budget, not a verdict on the work. An implementation review
+  that spends all three without passing ends that ROUND, not the issue: the open
+  findings are the work list, and `loopbreaker review-round` opens a new round
+  that starts again at pass one. The loop stays broken because opening a round
+  is a human act — it needs a name and a reason, it is refused while the current
+  round still has a pass left, and every round is on the record. What is refused
+  is a fourth pass grafted onto a review that already concluded, or a silent
+  ship past findings nobody repaired.
 - Review completion and shipping readiness are separate facts.
 - Shipping requires every enforced behavior to be verified or explicitly waived.
 - Evidence is executed, never asserted. An enforced behavior can only be verified

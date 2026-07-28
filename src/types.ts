@@ -178,11 +178,30 @@ export interface EvidenceRow extends ProvenanceFields {
 export interface ReviewPassRow extends ProvenanceFields {
   id: string;
   issue_id: string;
+  /** Which review round this pass belongs to. Rounds start at 1. */
+  round: number;
   pass_number: number;
   kind: ReviewKind;
   verdict: Verdict;
   summary: string;
   legacy_pass_count: number | null;
+  created_at: string;
+}
+
+/**
+ * An explicitly authorized re-opening of review after a round failed out.
+ *
+ * A round is still capped at three passes; this is what stops that cap from
+ * being a dead end. Re-opening is a human act, recorded with a name and a
+ * reason, so extending the loop costs a decision instead of happening by
+ * default.
+ */
+export interface ReviewRoundRow extends ProvenanceFields {
+  id: string;
+  issue_id: string;
+  round: number;
+  reason: string;
+  authorized_by: string;
   created_at: string;
 }
 
@@ -233,13 +252,27 @@ export interface WaiverRow extends ProvenanceFields {
 }
 
 export interface ReviewState {
+  /** Passes recorded in the CURRENT round, never a lifetime total. */
   pass_count: number;
   current_pass: number | null;
   next_pass: number | null;
-  next_action: ReviewKind | "none";
+  /**
+   * `new_implementation_round` means this round failed out at pass three. The
+   * findings are the work list; a human opens the next round once they are
+   * repaired. It is never entered automatically.
+   */
+  next_action: ReviewKind | "none" | "new_implementation_round";
   automatic_pass_four: false;
   decision_required: boolean;
   complete: boolean;
+  /** The round these passes belong to. Starts at 1. */
+  round: number;
+  /** Every pass ever recorded for this issue, across all rounds. */
+  total_passes: number;
+  /** True when this round failed out and only a new round can continue it. */
+  round_exhausted: boolean;
+  /** Rounds opened after a failure, with who authorized each. */
+  rounds: Array<{ round: number; reason: string; authorized_by: string; created_at: string }>;
 }
 
 export interface PlanningReviewState {

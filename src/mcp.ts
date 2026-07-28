@@ -8,6 +8,7 @@ import {
   DomainError,
   recordDiscovery,
   importContract,
+  openReviewRound,
   planningHealth,
   recordEvidence,
   recordPass,
@@ -377,6 +378,27 @@ export async function runMcp(dbPath?: string): Promise<void> {
     async (input) => {
       try { return content(recordPass(db, { issueId: input.issue_id, passNumber: input.pass_number, verdict: input.verdict, summary: input.summary }), db.path); }
       catch (error) { return toolError(error); }
+    },
+  );
+
+  server.registerTool(
+    "review_open_round",
+    {
+      description:
+        "Open a new implementation round after a review round spent all three passes without passing. The open findings are the work list: repair them, then review again from pass one. Refused while the current round still has a pass left, and refused after a round that passed. Requires the name of the human authorizing it.",
+      inputSchema: {
+        issue_id: z.string().min(1),
+        reason: z.string().min(1),
+        authorized_by: z.string().min(1),
+      },
+    },
+    async (input) => {
+      try {
+        return content(
+          openReviewRound(db, { issueId: input.issue_id, reason: input.reason, authorizedBy: input.authorized_by }),
+          db.path,
+        );
+      } catch (error) { return toolError(error); }
     },
   );
 

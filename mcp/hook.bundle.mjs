@@ -20,7 +20,8 @@ var PROVENANCE_TABLES = [
   "planning_profiles",
   "shape_assessments",
   "planning_review_passes",
-  "planning_findings"
+  "planning_findings",
+  "review_rounds"
 ];
 var DEFAULT_PROVENANCE = { trigger_type: "cli", triggered_by: "unknown", trigger_data: null };
 var LoopbreakerDb = class {
@@ -89,13 +90,14 @@ var LoopbreakerDb = class {
       CREATE TABLE IF NOT EXISTS review_passes (
         id TEXT PRIMARY KEY,
         issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        round INTEGER NOT NULL DEFAULT 1,
         pass_number INTEGER NOT NULL CHECK (pass_number BETWEEN 1 AND 3),
         kind TEXT NOT NULL CHECK (kind IN ('comprehensive', 'repair_verification', 'decision')),
         verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail')),
         summary TEXT NOT NULL,
         legacy_pass_count INTEGER,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(issue_id, pass_number)
+        UNIQUE(issue_id, round, pass_number)
       );
 
       CREATE TABLE IF NOT EXISTS evidence (
@@ -273,12 +275,68 @@ var LoopbreakerDb = class {
         this.raw.exec("PRAGMA foreign_keys = ON");
       }
     }
+    this.raw.exec(`
+      CREATE TABLE IF NOT EXISTS review_rounds (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        round INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        authorized_by TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        trigger_type TEXT,
+        triggered_by TEXT,
+        trigger_data TEXT,
+        UNIQUE (issue_id, round)
+      );
+      CREATE INDEX IF NOT EXISTS idx_review_rounds_issue ON review_rounds(issue_id);
+    `);
     for (const table of PROVENANCE_TABLES) {
       const existing = new Set(
         this.raw.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name)
       );
       for (const column of ["trigger_type", "triggered_by", "trigger_data"]) {
         if (!existing.has(column)) this.raw.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
+      }
+    }
+    const reviewPassDdl = this.raw.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'review_passes'"
+    ).get()?.sql ?? "";
+    if (reviewPassDdl && !reviewPassDdl.includes("round")) {
+      this.raw.exec("PRAGMA foreign_keys = OFF");
+      this.raw.exec("BEGIN IMMEDIATE");
+      try {
+        this.raw.exec(`
+          CREATE TABLE review_passes_lb34 (
+            id TEXT PRIMARY KEY,
+            issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+            round INTEGER NOT NULL DEFAULT 1,
+            pass_number INTEGER NOT NULL CHECK (pass_number BETWEEN 1 AND 3),
+            kind TEXT NOT NULL CHECK (kind IN ('comprehensive', 'repair_verification', 'decision')),
+            verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'fail')),
+            summary TEXT NOT NULL,
+            legacy_pass_count INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            trigger_type TEXT,
+            triggered_by TEXT,
+            trigger_data TEXT,
+            UNIQUE (issue_id, round, pass_number)
+          );
+          INSERT INTO review_passes_lb34
+            (id, issue_id, round, pass_number, kind, verdict, summary, legacy_pass_count, created_at,
+             trigger_type, triggered_by, trigger_data)
+          SELECT id, issue_id, 1, pass_number, kind, verdict, summary, legacy_pass_count, created_at,
+                 trigger_type, triggered_by, trigger_data
+          FROM review_passes;
+          DROP TABLE review_passes;
+          ALTER TABLE review_passes_lb34 RENAME TO review_passes;
+          CREATE INDEX IF NOT EXISTS idx_review_passes_issue ON review_passes(issue_id);
+        `);
+        this.raw.exec("COMMIT");
+      } catch (error) {
+        this.raw.exec("ROLLBACK");
+        throw error;
+      } finally {
+        this.raw.exec("PRAGMA foreign_keys = ON");
       }
     }
   }
@@ -657,10 +715,15 @@ function substrate(db, issueId) {
       planning_score: planning.score
     };
   }
-  const count = reviewPasses.length;
-  const latest = reviewPasses.at(-1);
-  const complete = count === 3 || latest?.verdict === "pass";
+  const reviewRounds = db.raw.prepare("SELECT * FROM review_rounds WHERE issue_id = ? ORDER BY round").all(issue.id);
+  const currentRound = reviewRounds.at(-1)?.round ?? 1;
+  const roundPasses = reviewPasses.filter((pass) => (pass.round ?? 1) === currentRound);
+  const count = roundPasses.length;
+  const latest = roundPasses.at(-1);
+  const passed = latest?.verdict === "pass";
+  const complete = count === 3 || passed;
   const nextPass = complete ? null : count + 1;
+  const roundExhausted = count === 3 && !passed;
   return {
     issue,
     contract: {
@@ -685,10 +748,19 @@ function substrate(db, issueId) {
       pass_count: count,
       current_pass: latest?.pass_number ?? null,
       next_pass: nextPass,
-      next_action: nextPass ? reviewKind(nextPass) : "none",
+      next_action: nextPass ? reviewKind(nextPass) : roundExhausted ? "new_implementation_round" : "none",
       automatic_pass_four: false,
       decision_required: count === 2 && latest?.verdict === "fail",
-      complete
+      complete,
+      round: currentRound,
+      total_passes: reviewPasses.length,
+      round_exhausted: roundExhausted,
+      rounds: reviewRounds.map((round) => ({
+        round: round.round,
+        reason: round.reason,
+        authorized_by: round.authorized_by,
+        created_at: round.created_at
+      }))
     },
     shipping
   };

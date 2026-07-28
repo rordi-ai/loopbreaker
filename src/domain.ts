@@ -12,6 +12,7 @@ import type {
   PlanningReviewState,
   PlanningReviewVerdict,
   ReviewKind,
+  ReviewRoundRow,
   ShapeProfile,
   ShapeState,
   ShipState,
@@ -340,10 +341,23 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
     };
   }
 
-  const count = reviewPasses.length;
-  const latest = reviewPasses.at(-1);
-  const complete = count === 3 || latest?.verdict === "pass";
+  // LB-34 — passes are counted WITHIN the current round. A round still gets at
+  // most three; what changed is that failing out of one is no longer the end of
+  // the road, only the end of that round.
+  const reviewRounds = db.raw
+    .prepare("SELECT * FROM review_rounds WHERE issue_id = ? ORDER BY round")
+    .all(issue.id) as unknown as ReviewRoundRow[];
+  const currentRound = reviewRounds.at(-1)?.round ?? 1;
+
+  const roundPasses = reviewPasses.filter((pass) => (pass.round ?? 1) === currentRound);
+  const count = roundPasses.length;
+  const latest = roundPasses.at(-1);
+  const passed = latest?.verdict === "pass";
+  const complete = count === 3 || passed;
   const nextPass = complete ? null : count + 1;
+  // Three passes spent without a pass verdict: the round is out of budget, and
+  // only an explicitly authorized new round can carry the work forward.
+  const roundExhausted = count === 3 && !passed;
 
   return {
     issue,
@@ -369,10 +383,19 @@ export function substrate(db: LoopbreakerDb, issueId: string): Substrate {
       pass_count: count,
       current_pass: latest?.pass_number ?? null,
       next_pass: nextPass,
-      next_action: nextPass ? reviewKind(nextPass) : "none",
+      next_action: nextPass ? reviewKind(nextPass) : roundExhausted ? "new_implementation_round" : "none",
       automatic_pass_four: false,
       decision_required: count === 2 && latest?.verdict === "fail",
       complete,
+      round: currentRound,
+      total_passes: reviewPasses.length,
+      round_exhausted: roundExhausted,
+      rounds: reviewRounds.map((round) => ({
+        round: round.round,
+        reason: round.reason,
+        authorized_by: round.authorized_by,
+        created_at: round.created_at,
+      })),
     },
     shipping,
   };
@@ -547,10 +570,13 @@ export function recordPass(
   if (!Number.isInteger(input.passNumber) || input.passNumber < 1 || input.passNumber > 3) {
     throw new DomainError("invalid_pass", "Review passes are limited to 1, 2, and 3.", "There is no automatic pass 4.");
   }
-  const existing = current.review_passes.find((pass) => pass.pass_number === input.passNumber);
+  const round = current.review.round;
+  const existing = current.review_passes.find(
+    (pass) => pass.pass_number === input.passNumber && (pass.round ?? 1) === round,
+  );
   if (existing) {
     if (existing.verdict === input.verdict && existing.summary === input.summary) return current;
-    throw new DomainError("pass_conflict", `Pass ${input.passNumber} already has a different result.`);
+    throw new DomainError("pass_conflict", `Pass ${input.passNumber} of round ${round} already has a different result.`);
   }
   if (!current.shape.ready) {
     throw new DomainError("shape_not_ready", "Code review cannot continue until shape disposition is proceed and the shape is complete.");
@@ -569,13 +595,67 @@ export function recordPass(
     throw new DomainError("pass_out_of_order", `Expected pass ${current.review.pass_count + 1}, received pass ${input.passNumber}.`);
   }
   if (current.review.complete) {
-    throw new DomainError("review_complete", "Review is already complete; another pass would expand the review loop.");
+    throw new DomainError(
+      "review_complete",
+      `Round ${round} is already complete; another pass would expand the review loop.`,
+      current.review.round_exhausted
+        ? `Repair the open findings, then open the next round with loopbreaker review-round ${input.issueId} --reason TEXT --authorized-by NAME.`
+        : undefined,
+    );
   }
 
   db.raw.prepare(`
-    INSERT INTO review_passes (id, issue_id, pass_number, kind, verdict, summary, trigger_type, triggered_by, trigger_data)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(randomUUID(), input.issueId, input.passNumber, reviewKind(input.passNumber), input.verdict, input.summary, ...db.provenanceValues());
+    INSERT INTO review_passes (id, issue_id, round, pass_number, kind, verdict, summary, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, round, input.passNumber, reviewKind(input.passNumber), input.verdict, input.summary, ...db.provenanceValues());
+  return substrate(db, input.issueId);
+}
+
+/**
+ * LB-34 — open a new implementation round after a review round failed out.
+ *
+ * Three passes is a budget, not a verdict on the work. When a round ends
+ * without a pass, the findings are the work list and the honest next step is
+ * more implementation followed by a fresh review — not a fourth pass grafted
+ * onto a review that already concluded, and not a silent ship.
+ *
+ * The loop stays broken because opening a round is a deliberate human act: it
+ * requires a name and a reason, it is refused while the current round still has
+ * passes left, and every round is recorded. Extending the work costs a decision
+ * that someone signs.
+ */
+export function openReviewRound(
+  db: LoopbreakerDb,
+  input: { issueId: string; reason: string; authorizedBy: string },
+): Substrate {
+  const current = substrate(db, input.issueId);
+
+  if (!input.reason.trim()) {
+    throw new DomainError("missing_reason", "Opening a new review round requires a reason.");
+  }
+  if (!input.authorizedBy.trim()) {
+    throw new DomainError(
+      "missing_authorization",
+      "Opening a new review round requires the name of the person authorizing it.",
+      "A round is extended by a human decision, never by an agent deciding it needs one more try.",
+    );
+  }
+  if (!current.review.round_exhausted) {
+    throw new DomainError(
+      "round_not_exhausted",
+      current.review.complete
+        ? `Round ${current.review.round} passed; there is nothing to re-open.`
+        : `Round ${current.review.round} still has pass ${current.review.next_pass} available.`,
+      "A new round is only for a round that spent all three passes without passing.",
+    );
+  }
+
+  const nextRound = current.review.round + 1;
+  db.raw.prepare(`
+    INSERT INTO review_rounds (id, issue_id, round, reason, authorized_by, trigger_type, triggered_by, trigger_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), input.issueId, nextRound, input.reason.trim(), input.authorizedBy.trim(), ...db.provenanceValues());
+
   return substrate(db, input.issueId);
 }
 

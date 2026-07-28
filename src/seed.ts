@@ -116,9 +116,9 @@ export function seedDemo(db: LoopbreakerDb) {
     evidence.run("DEMO-E3", DEMO_ISSUE, "DEMO-B3", "unit", "pass", "A unit retry test passes, but no wired redelivery proof exists yet.", "demo://unit-redelivery", ...provenance);
 
     db.raw.prepare(`
-      INSERT INTO review_passes (id, issue_id, pass_number, kind, verdict, summary, legacy_pass_count, trigger_type, triggered_by, trigger_data)
-      VALUES (?, ?, 1, 'comprehensive', 'fail', ?, 13, ?, ?, ?)
-      ON CONFLICT(issue_id, pass_number) DO NOTHING
+      INSERT INTO review_passes (id, issue_id, round, pass_number, kind, verdict, summary, legacy_pass_count, trigger_type, triggered_by, trigger_data)
+      VALUES (?, ?, 1, 1, 'comprehensive', 'fail', ?, 13, ?, ?, ?)
+      ON CONFLICT(issue_id, round, pass_number) DO NOTHING
     `).run(
       "DEMO-P1",
       DEMO_ISSUE,
