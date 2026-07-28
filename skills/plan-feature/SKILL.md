@@ -76,7 +76,11 @@ use `$shape-strategy` instead of planning competing interpretations.
    Preserve its author's disposition; do not silently convert `spike`, `park`, or
    `reject` into `proceed`.
 10. Read `review_substrate` and confirm `enforced_by_default: true` plus the persisted
-   planning score. Hand the frozen artifact to a separate `$review-planning` agent.
+   planning score. Hand the frozen artifact to a separate `$review-planning`
+   agent — a cross-vendor CLI reviewer, or a subagent with fresh context that
+   reads the substrate itself rather than your summary of it. You cannot approve
+   your own plan, and "reviewed by me, flagged non-independent" is not a
+   substitute.
    Plan authoring does not approve implementation.
 
 Do not add requirements from a parent bet after the behavior surface is frozen.

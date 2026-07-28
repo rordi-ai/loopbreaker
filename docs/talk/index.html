@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rigor is not correctness — Loopbreaker</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --fg: #e6edf3;
+    --muted: #90a0b0;
+    --accent: #7dd3fc;
+    --warn: #fca5a5;
+    --good: #86efac;
+    --line: rgba(255,255,255,.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); }
+  body {
+    font: 400 22px/1.5 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .deck { height: 100vh; overflow: hidden; position: relative; }
+  .slide {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column; justify-content: center;
+    padding: 6vh 8vw;
+    max-width: 1400px; margin: 0 auto;
+  }
+  .slide.is-active { display: flex; }
+  h1 { font-size: clamp(2.6rem, 6vw, 4.6rem); line-height: 1.05; margin: 0 0 1.5rem; letter-spacing: -.03em; }
+  h2 { font-size: clamp(1.8rem, 3.6vw, 3rem); line-height: 1.12; margin: 0 0 1.6rem; letter-spacing: -.02em; }
+  h3 { font-size: clamp(1.1rem, 1.7vw, 1.4rem); margin: 0 0 .8rem; color: var(--accent); font-weight: 600; }
+  p { font-size: clamp(1.05rem, 1.6vw, 1.5rem); margin: 0 0 1rem; max-width: 34ch; }
+  p.wide { max-width: 52ch; }
+  .kicker {
+    font-size: .8rem; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 1.2rem;
+  }
+  .lede { font-size: clamp(1.2rem, 2vw, 1.8rem); color: var(--muted); max-width: 40ch; }
+  ul { margin: 0; padding-left: 1.2em; }
+  li { font-size: clamp(1rem, 1.5vw, 1.35rem); margin-bottom: .7rem; max-width: 44ch; }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  pre {
+    background: rgba(255,255,255,.045); border: 1px solid var(--line);
+    border-radius: 12px; padding: 1.1rem 1.3rem; overflow-x: auto;
+    font-size: clamp(.8rem, 1.15vw, 1.05rem); line-height: 1.55; margin: 0 0 1.2rem;
+  }
+  .big-number { font-size: clamp(5rem, 18vw, 14rem); font-weight: 800; letter-spacing: -.05em; line-height: .9; }
+  .warn { color: var(--warn); }
+  .good { color: var(--good); }
+  .accent { color: var(--accent); }
+  .muted { color: var(--muted); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; align-items: start; }
+  table { border-collapse: collapse; width: 100%; font-size: clamp(.85rem, 1.25vw, 1.15rem); }
+  th, td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .85em; letter-spacing: .04em; text-transform: uppercase; }
+  blockquote {
+    margin: 0 0 1.2rem; padding-left: 1.2rem; border-left: 3px solid var(--accent);
+    font-size: clamp(1.05rem, 1.7vw, 1.5rem); max-width: 46ch;
+  }
+  .progress { position: fixed; left: 0; bottom: 0; height: 3px; background: var(--accent); transition: width .2s; }
+  .counter { position: fixed; right: 1rem; bottom: .8rem; color: var(--muted); font-size: .8rem; }
+  .center { align-items: center; text-align: center; }
+  .center p, .center .lede { max-width: 46ch; }
+  @media print { .slide { display: flex !important; page-break-after: always; height: 100vh; } }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <section class="slide center">
+    <p class="kicker">Loopbreaker</p>
+    <h1>Rigor is not<br />correctness</h1>
+    <p class="lede">What happens when you build gates for AI agents, then point them at yourself.</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">Where this started</p>
+    <h2>Agent review doesn&rsquo;t converge</h2>
+    <p class="wide">A reviewer finds issues. You fix them. It finds more. Thirteen passes later
+      you&rsquo;re not closer to shipping &mdash; you&rsquo;re just tired.</p>
+    <p class="wide muted">The loop has no natural end, because &ldquo;is there anything else wrong?&rdquo;
+      is always answerable.</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">Fix one</p>
+    <h2>Bound the passes</h2>
+    <ul>
+      <li><strong>Pass 1</strong> &mdash; comprehensive. Find the coherent set.</li>
+      <li><strong>Pass 2</strong> &mdash; repair verification. Check the fixes.</li>
+      <li><strong>Pass 3</strong> &mdash; decision only. Ship, ship with debt, split, or hold.</li>
+    </ul>
+    <p class="accent" style="margin-top:1.5rem">There is no pass 4.</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">Fix two</p>
+    <h2>Review completion and shipping readiness are different facts</h2>
+    <p class="wide">A reviewer can finish checking a repair while a required behaviour still has
+      no production-relevant proof.</p>
+    <p class="wide">Conflating those is what made the loop grow. So: two separate decisions,
+      neither able to overwrite the other.</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">And so on</p>
+    <h2>A chain of gates</h2>
+    <pre>discovery  &rarr;  shape  &rarr;  planning  &rarr;  planning review
+   &rarr;  implementation  &rarr;  evidence  &rarr;  ship</pre>
+    <p class="wide">Each stage checks that the one below it follows faithfully from the one above.</p>
+  </section>
+
+  <section class="slide center">
+    <h2>A gate chain verifies<br /><span class="accent">internal consistency</span></h2>
+    <p class="lede">It cannot check whether anything entering it is true.</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">The corollary</p>
+    <h2>Rigor amplifies whatever enters unchecked</h2>
+    <p class="wide">A correct input gets hardened into working software.</p>
+    <p class="wide warn">A wrong input gets hardened into <em>rigorously certified wrong software</em>
+      &mdash; carrying more conviction, because now it has passing proofs behind it.</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">Two unchecked inputs</p>
+    <h2>Both ends of the pipe</h2>
+    <table>
+      <tr><th></th><th>Top</th><th>Bottom</th></tr>
+      <tr><td><strong>Input</strong></td><td>the premise</td><td>the verdict</td></tr>
+      <tr><td><strong>Who supplies it</strong></td><td>whoever wrote the shape</td><td>whoever recorded the evidence</td></tr>
+      <tr><td><strong>Failure</strong></td><td class="warn">certified <em>wrong</em> software</td><td class="warn">certified <em>unbuilt</em> software</td></tr>
+    </table>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">The bottom of the pipe</p>
+    <h2>Two commands. No code.</h2>
+    <pre>loopbreaker evidence DEMO-1 --behavior DEMO-B3 \
+    --tier wired --verdict pass \
+    --summary "Wired replay harness passes end to end." \
+    --source "tests/replay/warm-followup.wired.test.ts"
+
+loopbreaker verify DEMO-B3 --evidence &lt;id&gt;</pre>
+    <p class="warn"><code>tests/replay/warm-followup.wired.test.ts</code> does not exist.</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">The result</p>
+    <table>
+      <tr><th></th><th>disposition</th><th>reason</th></tr>
+      <tr><td>before</td><td class="warn">hold</td><td>1 enforced behavior is neither verified nor waived</td></tr>
+      <tr><td>after</td><td class="good">ship</td><td>Every enforced behavior is verified</td></tr>
+    </table>
+    <p class="wide" style="margin-top:1.5rem">The tier was self-declared. The verdict was self-declared.
+      The only mechanical defence was &ldquo;enforced behaviours can&rsquo;t be verified by <em>unit</em> tests&rdquo;
+      &mdash; escaped by typing <code>wired</code>.</p>
+  </section>
+
+  <section class="slide center">
+    <p class="kicker">Then we applied the fix to our own substrate</p>
+    <div class="big-number warn">32</div>
+    <p class="lede">enforced behaviours verified on evidence<br />the machine never executed</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">What it cost</p>
+    <h2>Two shipped issues became zero</h2>
+    <table>
+      <tr><th></th><th>before</th><th>after</th></tr>
+      <tr><td><code>ship</code></td><td>LB-16, LB-18</td><td class="muted">&mdash;</td></tr>
+      <tr><td><code>ship_with_debt</code></td><td>LB-21</td><td>LB-21</td></tr>
+      <tr><td><code>hold</code></td><td>12</td><td class="warn">14</td></tr>
+    </table>
+    <p class="wide" style="margin-top:1.4rem">The gate found no new bugs. It withdrew a claim
+      that was never earned.</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">The fix</p>
+    <h2>Evidence is executed, never asserted</h2>
+    <ul>
+      <li>A behaviour names a <strong>registered harness</strong>, never a command.</li>
+      <li><code>prove</code> runs it. The verdict comes from the exit code.</li>
+      <li><code>not_run</code> is the fail-closed default &mdash; failing to observe a pass is not passing.</li>
+      <li>The tier comes from the registry, so typing <code>wired</code> no longer makes it wired.</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">The top of the pipe</p>
+    <h2>The premise has to come from a human</h2>
+    <p class="wide">Nothing downstream can check it. So: an interview, recorded field by field,
+      approved by the founder before shape can proceed.</p>
+    <p class="wide muted">That was the design. Then an agent ran it.</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">What the agent offered</p>
+    <blockquote>&ldquo;I&rsquo;ll run <code>loopbreaker discover&nbsp;--approve --by "Ben&nbsp;(ben@rordi.ai)"</code>
+      on your behalf.&rdquo;</blockquote>
+    <p class="muted">Its first option. Recommended.</p>
+    <pre>approved_by:    "Ben (ben@rordi.ai)"   <span class="muted">&larr; the record</span>
+trigger_type:   cli
+triggered_by:   ubuntu                <span class="warn">&larr; its own shell</span></pre>
+  </section>
+
+  <section class="slide center">
+    <h2><code>approved_by</code> is a string<br />the caller types</h2>
+    <p class="lede">Only the <span class="accent">ingress</span> is evidence a human acted.</p>
+    <p class="muted" style="margin-top:1rem">Approval now works from the browser and nowhere else &mdash;
+      because a founder&rsquo;s terminal and an agent&rsquo;s terminal are the same terminal.</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">Does any of it work?</p>
+    <h2>One sentence in. Shipped software out.</h2>
+    <pre>&gt; Add an /api/health endpoint that reports the app
+  version and current git commit SHA.</pre>
+    <p class="wide">The agent interviewed me, got my approval, shaped it, planned it, failed its own
+      independent planning review, repaired it, built test tooling the template didn&rsquo;t have,
+      registered a harness, executed it, and shipped.</p>
+    <p class="accent">The only human input was answering questions.</p>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">It took six tries to get there</p>
+    <table>
+      <tr><th>Run</th><th>What was wrong</th></tr>
+      <tr><td>1</td><td>Plugin fully loaded and <strong>completely ignored</strong></td></tr>
+      <tr><td>2</td><td>Orientation is advisory; only a gate changes behaviour</td></tr>
+      <tr><td>3</td><td>The gate demanded a CLI that wasn&rsquo;t installed</td></tr>
+      <tr><td>4</td><td>The CLI, installed, silently did nothing</td></tr>
+      <tr><td>5</td><td>Discovery asked implementation questions, not premise questions</td></tr>
+      <tr><td>6</td><td>&mdash;</td></tr>
+    </table>
+  </section>
+
+  <section class="slide">
+    <p class="kicker">Still open</p>
+    <h2>What I can&rsquo;t claim</h2>
+    <ul>
+      <li><strong>Discovery has no independent review.</strong> Every other layer does. It has my approval, which is a decision, not a review.</li>
+      <li><strong>Red-first is a flag, not a gate.</strong> The dry run shipped with a plan claiming it had proved red first. The substrate disagreed.</li>
+      <li><strong>An agent with a shell can still reach the browser endpoint.</strong> Attribution, not prevention.</li>
+    </ul>
+  </section>
+
+  <section class="slide center">
+    <h2>A pipeline can only check<br />that each step follows</h2>
+    <p class="lede">Every place something enters unchecked is a place where
+      your rigor works against you.</p>
+    <p class="muted" style="margin-top:2rem">github.com/rordi-ai/loopbreaker</p>
+  </section>
+
+</div>
+<div class="progress" id="progress"></div>
+<div class="counter" id="counter"></div>
+<script>
+  const slides = [...document.querySelectorAll('.slide')];
+  let index = Math.min(Number(location.hash.slice(1)) || 0, slides.length - 1);
+  function render() {
+    slides.forEach((slide, i) => slide.classList.toggle('is-active', i === index));
+    document.getElementById('progress').style.width = ((index + 1) / slides.length * 100) + '%';
+    document.getElementById('counter').textContent = (index + 1) + ' / ' + slides.length;
+    history.replaceState(null, '', '#' + index);
+  }
+  function go(delta) { index = Math.max(0, Math.min(slides.length - 1, index + delta)); render(); }
+  addEventListener('keydown', (event) => {
+    if (['ArrowRight', 'ArrowDown', ' ', 'PageDown', 'n'].includes(event.key)) { event.preventDefault(); go(1); }
+    if (['ArrowLeft', 'ArrowUp', 'PageUp', 'p'].includes(event.key)) { event.preventDefault(); go(-1); }
+    if (event.key === 'Home') { index = 0; render(); }
+    if (event.key === 'End') { index = slides.length - 1; render(); }
+  });
+  addEventListener('click', (event) => go(event.clientX < innerWidth * 0.25 ? -1 : 1));
+  render();
+</script>
+</body>
+</html>

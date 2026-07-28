@@ -51,8 +51,28 @@ completed pass with `planning_review_record_pass`. Passes 1 and 2 allow only
 - The issue's enforced behavior children are the acceptance surface. Narrative
   parents interpret it but cannot add requirements.
 - Planning health proves structural completeness; this review judges coherence.
-- The authoring agent must not approve its own work. Ask for a separate agent or
-  human reviewer when the current context authored the shape or plan.
+- The authoring agent must not approve its own work.
+
+  **Independence is context isolation, not identity.** What disqualifies the
+  author is not being the same process — it is having the author's reasoning
+  already in context. A reviewer that inherits the plan's justification will
+  find it justified. So the reviewer must read the substrate ITSELF
+  (`review_substrate`, `delivery_readiness`, `loopbreaker discovery ISSUE`) and
+  must not be handed the author's summary of it.
+
+  In preference order, when the current context authored the shape or plan:
+
+  1. **A cross-vendor reviewer** — codex, gemini, or another CLI agent reading
+     the substrate over MCP and recording its own findings. Strongest: a
+     different model family shares neither the context nor the priors.
+  2. **A subagent with fresh context** — spawned knowing only the issue id, told
+     to read the substrate directly. Sufficient in a single-session workflow.
+     If the host forbids spawning agents without asking, ASK; do not fall back
+     to reviewing your own plan.
+  3. **The founder.**
+
+  Recording your own approval and flagging it "non-independent" is not an
+  option. The gate has one job and that defeats it.
 - Missing desirable scope is a proposal unless an enforced behavior requires it.
 - Do not modify source code, planning artifacts, or waivers during review.
 - Do not start implementation or code review until `delivery_readiness` reports
