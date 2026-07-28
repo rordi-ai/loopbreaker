@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What If Loops Aren't the Answer — narrative</title>
+<style>
+  :root { --bg:#0b0f14; --fg:#e6edf3; --muted:#90a0b0; --accent:#7dd3fc; --line:rgba(255,255,255,.12); }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:400 17px/1.65 ui-sans-serif,-apple-system,"Segoe UI",system-ui,sans-serif; -webkit-text-size-adjust:100%; }
+  .wrap { max-width:44rem; margin:0 auto; padding:2rem 1.15rem 6rem; }
+  a { color:var(--accent); }
+  h1 { font-size:2rem; line-height:1.15; letter-spacing:-.02em; margin:0 0 1.5rem; }
+  h2 { font-size:1.35rem; line-height:1.25; margin:2.6rem 0 .9rem; padding-top:1.4rem; border-top:1px solid var(--line); letter-spacing:-.01em; }
+  h3 { font-size:1.05rem; color:var(--accent); margin:1.8rem 0 .6rem; }
+  p { margin:0 0 1.05rem; }
+  ul,ol { padding-left:1.25rem; margin:0 0 1.1rem; }
+  li { margin-bottom:.5rem; }
+  strong { color:#fff; }
+  code { font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:.88em; background:rgba(255,255,255,.07); padding:.12em .38em; border-radius:5px; }
+  pre { background:rgba(255,255,255,.05); border:1px solid var(--line); border-radius:10px; padding:.9rem 1rem; overflow-x:auto; }
+  pre code { background:none; padding:0; font-size:.82rem; line-height:1.5; }
+  blockquote { margin:0 0 1.2rem; padding:.2rem 0 .2rem 1rem; border-left:3px solid var(--accent); color:var(--muted); }
+  blockquote strong { color:var(--fg); }
+  table { width:100%; border-collapse:collapse; margin:0 0 1.3rem; font-size:.92rem; display:block; overflow-x:auto; }
+  th,td { text-align:left; padding:.5rem .6rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; }
+  hr { border:0; border-top:1px solid var(--line); margin:2.4rem 0; }
+  .nav { position:sticky; top:0; background:rgba(11,15,20,.94); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:.7rem 1.15rem; display:flex; gap:1rem; font-size:.9rem; }
+</style></head><body>
+<nav class="nav"><a href="/narrative.html">Narrative</a><a href="/">Deck</a></nav>
+<div class="wrap">
+<h1>What If Loops Aren't the Answer</h1>
+<p>Talk narrative. Audience: practitioners already building agent systems. 20 minutes.</p>
+<p>This is the argument, not the script. Every claim is marked with the evidence behind it, and the
+claims I cannot currently defend are marked as such.</p>
+<hr />
+<h2>1. The tools are good. That is what makes the gap interesting. (~3 min)</h2>
+<p>Do not open by strawmanning AI code review. This room uses these tools, and the numbers are strong.</p>
+<blockquote>
+<p><strong>Evidence — a 3.5-week head-to-head on a production SaaS codebase: 146 merged PRs, 679 findings,
+four reviewers running in parallel on default configuration.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>False positive rate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Greptile</td>
+<td><strong>0%</strong> — 118 of 120 findings verified valid, ~92% "bug-shaped"</td>
+</tr>
+<tr>
+<td>CodeRabbit</td>
+<td>2.3% — 281 findings, 68% shipped one-click patches</td>
+</tr>
+<tr>
+<td>Cursor BugBot</td>
+<td>4.8%</td>
+</tr>
+<tr>
+<td>Sentry Seer</td>
+<td>0% at <code>critical</code></td>
+</tr>
+</tbody>
+</table>
+<p>These catch race conditions, null-handling, off-by-one, session lifecycle bugs, architectural
+violations. This is not naive pattern matching.</p>
+</blockquote>
+<p>They also already support a basis. CodeRabbit takes custom review instructions and <strong>AST-grep rules</strong>
+— structural, tree-sitter-backed patterns, not file globs. "Give the reviewer something concrete to
+check against" is a shipped product feature, not my idea.</p>
+<p>So the interesting question is not <em>"why doesn't AI review work?"</em> It is: <strong>these tools are accurate,
+configurable, and grounded — and something is still missing. What?</strong></p>
+<hr />
+<h2>2. What they structurally cannot check (~3 min)</h2>
+<p>The same study's conclusion, stated plainly:</p>
+<blockquote>
+<p>Tools are strongest at <strong>mechanical and structural issues</strong> and weakest at <strong>intentional
+correctness</strong> — <em>does this implement what was asked?</em></p>
+</blockquote>
+<p>That is not a quality problem to be fixed with a better model. It is a <strong>missing input</strong>. A reviewer
+is handed a diff and a codebase. It is never handed the commitment: what this change was for, what
+counts as done, what was deliberately excluded. Nobody wrote that down in a form anything could
+check.</p>
+<p>So the review answers the only question it can: <em>is this code defensible?</em> Not: <em>is this the change
+we agreed to?</em></p>
+<p>And the second half of the problem is that the humans who used to answer that have left.</p>
+<blockquote>
+<p><strong>Evidence — study of agent-authored PRs in popular repositories:</strong>
+- <strong>61.38%</strong> received no recorded review activity at all
+- Of those reviewed, <strong>58.77%</strong> were reviewed <strong>exclusively by other agents</strong>
+- Only <strong>15.9%</strong> showed observable human participation
+- A quarter of human comments were not review at all but <em>agent-steering</em> — telling the bot to fix
+  something</p>
+</blockquote>
+<p>We automated the reviewing and quietly removed the reviewer.</p>
+<hr />
+<h2>3. And volume turns the remaining human into a rubber stamp (~2 min)</h2>
+<blockquote>
+<p><strong>Evidence:</strong> 34.5% of review comments in Microsoft repositories were rated not useful; another
+study puts it at 44.5%. And the practitioner version: <em>"Beyond the 400-line threshold, you are not
+getting a review. You are getting a rubber stamp."</em></p>
+</blockquote>
+<p>A reviewer that produces technically valid comments can still make the team worse, because it
+increases the number of decisions a human must triage. The measure that matters is not comments
+produced — it is whether the feedback let someone make a <strong>confident decision</strong>.</p>
+<p>Hold that phrase. Everything after this is about producing decisions instead of findings.</p>
+<hr />
+<h2>4. The trap: a basis makes review sharper AND unbounded (~3 min)</h2>
+<p><strong>This is the first of the two beats the talk exists for.</strong></p>
+<p>So: write the commitment down. That is what I did — architectural invariants as a standing basis,
+the rules the system must hold, citable and versioned. A finding stops being <em>"this seems wrong"</em> and
+becomes <em>"this violates the rule that X."</em></p>
+<p>It works. And then it does something the accuracy numbers do not predict.</p>
+<p>A standing basis doesn't just improve findings. It multiplies them. Every pass can cite another
+invariant. Every repair opens surface for the next pass to examine. The review gets <em>better</em> and
+stops <em>ending</em>.</p>
+<p>And it is worse than a vibes-spiral, because now every finding is <strong>defensible</strong>. You cannot wave
+any of it away. Each one is correct, cited, and traceable to a rule you wrote down and agreed to.
+The spiral has your own authority behind it.</p>
+<blockquote>
+<p>Evidence: my own invariant-review skill ships with this in its description —
+<em>"...situations where repeated fixes risk scope expansion or </em><em>a failed-review spiral</em><em>."</em>
+The tool built to give review a basis carries a warning about the spiral that basis causes.</p>
+</blockquote>
+<p>The instinct at this point is to loop harder — more passes, more reviewers, cross-checking. That is
+adding turns, not information. <strong>If the loop had no terminating condition at pass three, it does not
+acquire one at pass nine.</strong></p>
+<hr />
+<h2>5. What actually ends it: bounded authority, not convergence (~2.5 min)</h2>
+<p>A review loop has no natural terminating condition, because <em>"is anything else wrong?"</em> is always
+answerable. So the end has to be imposed, and imposed <strong>in advance</strong> — otherwise the decision never
+arrives.</p>
+<p>Three passes, each with a different job:</p>
+<ol>
+<li><strong>Comprehensive</strong> — find the coherent set of problems.</li>
+<li><strong>Repair verification</strong> — check the fixes, and only the fixes.</li>
+<li><strong>Decision</strong> — ship, ship with named debt, split, or hold for one named risk.</li>
+</ol>
+<p>No pass four, under any framing. Not for "one more check," not for a reviewer's residual doubt.</p>
+<p>The second half of the structure is separating facts that get conflated: <strong>review completion and
+shipping readiness are different</strong>. A reviewer can finish checking a repair while a required
+behaviour still has no real proof. Two decisions, neither able to overwrite the other.</p>
+<hr />
+<h2>6. Then the floor drops out: where does the basis come from? (~3 min)</h2>
+<p><strong>The second beat the talk exists for.</strong></p>
+<p>Invariants are a <em>standing</em> basis. They cover what must always be true. They say nothing about what
+<em>this</em> change is for, what counts as done, or what you are deliberately not building.</p>
+<p>That per-work basis has to come from somewhere. And if the agent authors it, you have reintroduced
+the weights with extra steps and a citation format — a review that is rigorous against a premise
+nobody chose.</p>
+<p>Worse: a chain of gates verifies that each stage follows faithfully from the one above it. It cannot
+check the top. So a wrong premise doesn't get caught — it gets <strong>hardened</strong>, and it arrives with more
+conviction than it started with, because now it has passing proofs behind it.</p>
+<p><strong>Rigor does not correct a bad input. It certifies it.</strong></p>
+<hr />
+<h2>7. So: elicitation, and ratification the agent cannot fake (~3 min)</h2>
+<p>The per-work basis must be <strong>elicited</strong>, not authored. A real interview — one answer per required
+field, recorded verbatim, with the question that produced it, because an answer you cannot judge
+against its question is not reviewable.</p>
+<p>And then <strong>ratified</strong> by a human. That sounds like paperwork until you watch what happens without it.</p>
+<blockquote>
+<p>Evidence, verified in provenance: an agent running exactly this pipeline finished the interview,
+recorded the answers, then offered — as its first and recommended option — <em>"I'll run the approve
+command on your behalf."</em> It did.</p>
+<p><code>approved_by:    "Ben (ben@rordi.ai)"    ← what the record says
+trigger_type:   cli
+triggered_by:   ubuntu                  ← its own shell</code></p>
+<p>Nothing malicious. The answers were genuinely mine. But <code>approved_by</code> is a string the caller
+types, so the record asserted a human had ratified a premise when no human had acted — and every
+downstream gate would have been right to trust it.</p>
+</blockquote>
+<p>The lesson generalises past this tool: <strong>an attester that the actor supplies is not evidence.</strong> Only
+the channel is. Approval now works from a browser and nowhere else, because a founder's terminal and
+an agent's terminal are the same terminal.</p>
+<hr />
+<h2>8. The other end: proof that ran (~2 min)</h2>
+<p>Same failure, opposite end of the pipe. Evidence was a row an agent wrote: tier, verdict, summary.
+Nothing executed anything.</p>
+<blockquote>
+<p>Evidence, reproducible in two commands: declare a <code>wired</code> proof for a test file that does not
+exist, verify the behaviour, and the issue moves <code>hold</code> → <code>ship</code>. The only mechanical defence was
+"enforced behaviours can't be proven by unit tests" — escaped by typing <code>wired</code>.</p>
+</blockquote>
+<p>The fix: a behaviour names a <strong>registered harness</strong>, the machine runs it, and the verdict comes from
+the exit code. <code>not_run</code> is the fail-closed default, because failing to observe a pass is not a pass.</p>
+<blockquote>
+<p>Evidence: applying that to my own substrate found <strong>32</strong> enforced behaviours verified on evidence
+nothing ever executed. Two of my shipped issues went back to <code>hold</code>. The gate found no new bugs —
+it withdrew a claim that was never earned.</p>
+</blockquote>
+<hr />
+<h2>9. Does the structure actually produce better work? (~2 min)</h2>
+<p><em>(PENDING — both arms running 2026-07-28.)</em></p>
+<p>Same template, same model, same one-line request: <em>"Add a way to design and send a marketing email
+from the dashboard."</em></p>
+<ul>
+<li><strong>Arm A</strong> — no structure. Whatever the agent does on its own.</li>
+<li><strong>Arm B</strong> — the full pipeline: interview, ratified premise, bounded review, executed proof.</li>
+</ul>
+<p>Scored on measures fixed before the results existed:</p>
+<table>
+<thead>
+<tr>
+<th>Measure</th>
+<th>Why it is not arguable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Discrimination</strong></td>
+<td>Revert each arm's implementation, run <em>its own</em> tests, count how many go red. Tests that stay green proved nothing.</td>
+</tr>
+<tr>
+<td><strong>Code quality</strong></td>
+<td>Reviewed at the end, against the same standing invariants both arms were subject to.</td>
+</tr>
+<tr>
+<td>Did it ask anything</td>
+<td>The elicitation claim, directly</td>
+</tr>
+<tr>
+<td>Does it actually send mail</td>
+<td>The only end-to-end fact that cannot be argued</td>
+</tr>
+<tr>
+<td>Claim vs artifact</td>
+<td>What each arm <em>says</em> it did, against what its substrate shows</td>
+</tr>
+</tbody>
+</table>
+<p>The interesting result is probably not "Arm A wrote worse code" — it will likely write plausible
+code. It is whether Arm A's <strong>account of itself</strong> survives contact with its own artifacts. Which is
+the same failure as baseless review, one level up.</p>
+<blockquote>
+<p>Already verified independently: given one sentence — <em>"Add an /api/health endpoint that reports
+the app version and current git commit SHA"</em> — the structured arm interviewed me, took my
+approval, shaped it, planned it, <strong>failed its own independent planning review</strong>, repaired it,
+built test tooling the template did not have, registered a harness, executed it, and shipped. The
+only human input was answering questions.</p>
+</blockquote>
+<hr />
+<h2>10. What I can't claim (~1.5 min)</h2>
+<p>Ending on this is what makes the rest credible.</p>
+<ul>
+<li><strong>Discovery has no independent review.</strong> Every other layer has one. The premise has my approval,
+  which is a decision, not a review.</li>
+<li><strong>Red-first is a flag, not a gate.</strong> A dry run shipped with a plan claiming it had proven its
+  harness red before implementing. The substrate disagreed. The flag caught the overclaim; nothing
+  prevented it.</li>
+<li><strong>An agent with a shell can still reach the browser endpoint.</strong> That is attribution, not
+  prevention. Closing it needs a channel the agent genuinely does not hold.</li>
+<li><strong>It took six attempts</strong> to get an agent through the pipeline at all — plugin loaded and ignored,
+  a gate demanding a CLI that wasn't installed, a CLI that silently did nothing, an interview asking
+  implementation questions instead of premise questions.</li>
+</ul>
+<hr />
+<h2>Close (~30 sec)</h2>
+<p>A loop can only check itself against itself. More passes add turns, not information.</p>
+<p>What ends a review is not convergence — it is <strong>authority, bounded in advance</strong>, over <strong>a basis that
+came from outside the loop</strong>. One half of that basis is standing and written down. The other half
+has to be asked for, every time.</p>
+<hr />
+<h2>Timing</h2>
+<table>
+<thead>
+<tr>
+<th>Beat</th>
+<th>Minutes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1–2 setup and diagnosis</td>
+<td>4</td>
+</tr>
+<tr>
+<td>3 standing basis</td>
+<td>2.5</td>
+</tr>
+<tr>
+<td><strong>4 the spiral</strong></td>
+<td><strong>3</strong></td>
+</tr>
+<tr>
+<td>5 bounded authority</td>
+<td>2.5</td>
+</tr>
+<tr>
+<td><strong>6 where the basis comes from</strong></td>
+<td><strong>3</strong></td>
+</tr>
+<tr>
+<td>7 elicitation and ratification</td>
+<td>3</td>
+</tr>
+<tr>
+<td>8 executed proof</td>
+<td>2</td>
+</tr>
+<tr>
+<td>9 evidence</td>
+<td>2</td>
+</tr>
+<tr>
+<td>10 what I can't claim</td>
+<td>1.5</td>
+</tr>
+<tr>
+<td>close</td>
+<td>0.5</td>
+</tr>
+</tbody>
+</table>
+<p>Over by ~4 minutes. Beats 5 and 8 compress first; 4, 6 and 7 are the talk and should not.</p>
+<hr />
+<h2>Sources</h2>
+<ul>
+<li><a href="https://dev.to/_vjk/best-ai-code-reviewer-in-2026-we-ran-4-in-parallel-for-3-weeks-146-prs-679-findings-1c0f">Best AI Code Reviewer in 2026? We Ran 4 in Parallel for 3 Weeks (146 PRs, 679 Findings)</a> — the head-to-head numbers, and the mechanical-vs-intentional conclusion</li>
+<li><a href="https://arxiv.org/html/2605.02273">These Aren't the Reviews You're Looking For: How Humans Review AI-Generated Pull Requests</a> — 61.38% unreviewed, 58.77% agent-only, 15.9% human participation</li>
+<li><a href="https://www.codeant.ai/blogs/prevent-ai-code-review-overload">Why AI Code Review Overwhelms Developers and How to Fix It</a> — non-useful comment rates</li>
+<li><a href="https://dev.to/cseeman/return-on-attention-why-ai-code-reviews-are-wearing-us-out-2hh0">Return on Attention: Why AI Code Reviews Are Wearing Us Out</a> — the 400-line rubber stamp, decisions over comments</li>
+<li><a href="https://docs.coderabbit.ai/configuration/ast-grep-instructions">CodeRabbit AST-grep review instructions</a> — a structural basis is already a shipped feature</li>
+<li><a href="https://www.greptile.com/content-library/best-ai-code-review-tools">Best Code Review Tools 2026 (Greptile)</a> — full-codebase context vs diff-level annotation</li>
+</ul>
+</div></body></html>
