@@ -1,26 +1,55 @@
 # Loopbreaker
 
-**A local planning and review graph that lets agent review stop without pretending the code is ready to ship.**
+**A meta-harness for coding agents.** Loopbreaker combines MCP tools, a CLI,
+lifecycle hooks, agent skills, and a structured entity ontology into one
+strict-but-bounded surface for implementation and review — with human elicitation
+and approval required before any work can start, and every behavior verified by a
+test loopbreaker runs itself, never a claim.
 
-Loopbreaker is the small public demo extracted from a deeper review-and-shipping
-feature embedded in [Rordi](https://github.com/rordi-ai). It stores an issue's
-shape decision, planning health, independent planning approval, acceptance behaviors,
-attributable evidence, findings, bounded review passes, and human waivers in local SQLite; exposes the same substrate to
-agents through MCP; and renders the ordered gates as a live workflow graph.
+It is the small public demo extracted from a deeper review-and-shipping feature
+embedded in [Rordi](https://github.com/rordi-ai). It drives an AI coding agent
+through one ordered session — discovery → a human approval → shape → plan → an
+independent, cross-vendor plan review → build-and-prove → a bounded code review →
+ship — recording every step as rows in a local SQLite file: the issue's discovery
+record, shape decision, planning health, independent planning approval, enforced
+behaviors, executed evidence, findings, bounded review passes, and human waivers.
+The same substrate is exposed to agents over MCP and rendered as a live workflow
+graph.
 
-The hard-won lesson behind it: **review convergence and shipping readiness are
-different facts**. A reviewer can finish checking a repair while a required
-behavior still lacks production-relevant proof. Conflating those facts caused
-review loops to grow indefinitely. A second lesson followed: a verification gate
-cannot rescue an issue whose scope, work ownership, proof plan, production wiring,
-or rollback was never made explicit. A third followed, and it runs the other way:
-a pipeline that verifies each stage against the one above it never checks the
-premise at the very top, so a wrong premise gets hardened into rigorously
-certified wrong software. Loopbreaker makes the distinct authorities explicit:
-founder-approved discovery, shape, structural planning health, semantic planning
-approval, implementation review, and shipping readiness.
+**Why "loopbreaker."** Review is where these processes usually loop without end —
+every pass finds something new, so it never converges. Loopbreaker bounds it: at
+most three passes, then the round ends, and reopening is a named human act. Three
+lessons shaped the rest:
 
-It now packages the complete public workflow as seven reusable agent skills:
+- **Review convergence and shipping readiness are different facts.** A reviewer
+  can finish checking a repair while an enforced behavior still lacks
+  production-relevant proof; conflating them made review loops grow indefinitely.
+- **A verification gate cannot rescue an unshaped issue** — scope, work ownership,
+  proof plan, production wiring, and rollback have to be explicit first.
+- **A pipeline that verifies each stage against the one above never checks the
+  premise at the top** — so a wrong premise hardens into rigorously certified
+  wrong software. Discovery is therefore the first authority, and it must come
+  from a human.
+
+Loopbreaker makes the distinct authorities explicit and ordered: founder-approved
+discovery, shape, structural planning health, independent planning approval,
+implementation review, and shipping readiness.
+
+## The five surfaces it combines
+
+- **MCP tools** — the same substrate an agent drives, as focused tools over stdio.
+- **a CLI** — every step as a `loopbreaker` command; TOON on stdout.
+- **lifecycle hooks** ([`src/hooks.ts`](src/hooks.ts)) — `SessionStart` prepends
+  the ordered pipeline and which tools to use to the agent's context; `PreToolUse`
+  denies source edits until the issue is admitted and replies with the exact
+  active gate. Shell commands and reads pass straight through.
+- **agent skills** — the seven below, invoked by name.
+- **a structured entity ontology** — a local SQLite schema (issues, behaviors,
+  evidence, findings, review passes, discovery records, …) whose domain rules are
+  CHECK constraints: `pass_number BETWEEN 1 AND 3` is literally "no pass four," and
+  `verdict IN ('pass','fail','not_run')` makes a missing proof its own state.
+
+The seven reusable agent skills:
 
 - `discovery-interview` — interview until every shape field traces to a human answer.
 - `shape-strategy` — frame appetite, reversibility, smallest slice, and success.
@@ -161,7 +190,8 @@ or review, load the substrate, and check ship status separately. It exposes eigh
 | `review_ship_status` | Read the authoritative ship disposition |
 
 There is deliberately **no discovery approval tool**. Recording the interview is
-the agent's job; approving it is not, so approval exists only on the CLI.
+the agent's job; approving it is not — so approval exists only on the CLI or in
+the browser (the "Needs you" inbox), never as a call an agent can make.
 
 The MCP results are TOON text blocks. Run a real client/server handshake with:
 
