@@ -126,6 +126,31 @@
   .graph-frame { position: relative; left: 50%; transform: translateX(-50%); width: 94vw; max-width: 1780px; height: 76vh; margin-top: 22px; border: 1px solid var(--line2); border-radius: 14px; overflow: hidden; background: var(--panel); }
   .graph-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
 
+  .block { margin-top: 36px; }
+  .block h2 { font-size: 1.18rem; margin-bottom: 6px; }
+  .block h2 .ref { font-family: var(--font-mono); font-size: .72rem; color: var(--faint); font-weight: 400; margin-left: 8px; }
+  .block .blurb { color: var(--muted); font-size: .96rem; margin: 0 0 16px; max-width: 72ch; }
+  .loop { border: 1px solid var(--line2); border-radius: 14px; padding: 22px; background: var(--panel); }
+  .loop-passes { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+  .pnode { flex: 0 0 auto; border: 1px solid var(--line2); border-radius: 10px; padding: 10px 14px; min-width: 146px; }
+  .pnode .pn { font-family: var(--font-mono); font-size: .68rem; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; }
+  .pnode .pt { font-size: .96rem; font-weight: 600; margin-top: 3px; }
+  .pnode .pd { font-family: var(--font-mono); font-size: .73rem; color: var(--muted); margin-top: 3px; }
+  .pnode.stop { border-style: dashed; border-color: color-mix(in srgb, var(--warn) 45%, var(--line2)); }
+  .pnode.stop .pt { color: var(--warn); }
+  .loop-note { margin: 18px 0 0; color: var(--muted); font-size: .97rem; line-height: 1.65; }
+  .loop-note b { color: var(--fg); } .loop-note .hl { color: var(--accent); }
+  .defs { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .defs li { display: grid; grid-template-columns: 214px 1fr; gap: 16px; padding: 13px 18px; border-bottom: 1px solid var(--line); background: var(--panel); align-items: baseline; }
+  .defs li:last-child { border-bottom: none; }
+  @media (max-width: 680px) { .defs li { grid-template-columns: 1fr; gap: 3px; } }
+  .defs .term { font-family: var(--font-mono); font-size: .85rem; color: var(--accent); }
+  .defs .term.file { color: var(--fg); }
+  .defs .term .rev { color: var(--amber); }
+  .defs .desc { font-size: .95rem; color: var(--muted); }
+  .defs .desc b { color: var(--fg); }
+  .toolset { display: flex; flex-wrap: wrap; gap: 7px; }
+
   .kv { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
   .kv li { display: grid; grid-template-columns: 120px 1fr; gap: 12px; align-items: baseline; }
   .kv .k { font-family: var(--font-mono); font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); }
@@ -208,8 +233,8 @@
   <!-- ================= 1 — HOW IT WORKS ================= -->
   <section data-view="pipeline" class="active">
     <p class="eyebrow">The idea</p>
-    <h1 class="view-h">An AI can build it fast. This makes sure it's actually right.</h1>
-    <p class="view-sub">Two things sink AI-written code: it builds the <em>wrong thing</em>, or it says “tests pass” when <em>nothing ran</em>. This closes both — a person pins down the goal up front, and every requirement is checked by a test that actually runs.</p>
+    <h1 class="view-h">A quality layer around an AI coding agent.</h1>
+    <p class="view-sub">It adds two things to how an AI already builds: a person confirms the <em>goal</em> before any code, and every requirement is checked by a <em>test that actually runs</em> — so what ships is closer to what was asked, and shown to work.</p>
 
     <div class="stack">
       <span class="s-item">a <b>CLI</b> + <b>MCP server</b></span>
@@ -248,58 +273,57 @@
   <!-- ================= 2 — UNDER THE HOOD ================= -->
   <section data-view="internals">
     <p class="eyebrow">Under the hood</p>
-    <h1 class="view-h">How it keeps the work honest</h1>
-    <p class="view-sub">A handful of small pieces. Together they make sure no part of the system gets to sign off on its own work.</p>
+    <h1 class="view-h">The actual parts</h1>
+    <p class="view-sub">No summary — here's what's really in it: the loop that stops review from sprawling, two hooks, seven skills, and the tool surface it all runs on.</p>
 
-    <div class="grid">
-      <div class="card">
-        <h3>It plugs into the agent <span class="tick">src/hooks.ts</span></h3>
-        <ul class="kv">
-          <li><span class="k">on start</span><span class="v">reminds the agent what it's building.</span></li>
-          <li><span class="k">before edits</span><span class="v">stops it jumping to code before the plan is checked.</span></li>
-        </ul>
-        <p>So the process actually happens — instead of being a doc the agent ignores.</p>
-      </div>
-
-      <div class="card">
-        <h3>One skill per step</h3>
-        <div class="chips">
-          <span class="chip">interview</span><span class="chip">scope</span>
-          <span class="chip">plan</span><span class="chip hl">review plan</span>
-          <span class="chip">build</span><span class="chip hl">review code</span>
-          <span class="chip">orchestrate</span>
+    <div class="block">
+      <h2>The bounded loop — what stops the sprawl</h2>
+      <p class="blurb">Review is where these processes usually spiral: every pass finds something new, so it never ends. This caps it. Each review gets three passes and no more.</p>
+      <div class="loop">
+        <div class="loop-passes">
+          <div class="pnode"><div class="pn">pass 1</div><div class="pt">Comprehensive</div><div class="pd">find it all, once</div></div>
+          <span class="conn">→</span>
+          <div class="pnode"><div class="pn">pass 2</div><div class="pt">Repair check</div><div class="pd">only the fixes</div></div>
+          <span class="conn">→</span>
+          <div class="pnode"><div class="pn">pass 3</div><div class="pt">Decision</div><div class="pd">ship, or don't</div></div>
+          <span class="conn">→</span>
+          <div class="pnode stop"><div class="pn">no pass 4</div><div class="pt">✕ it stops</div><div class="pd">under any framing</div></div>
         </div>
-        <p>The two highlighted only review — they read and record, they never touch the code.</p>
+        <p class="loop-note">Still failing after three? The round <b>ends</b> — the open findings become the <b>work list</b>, and opening another round takes a <span class="hl">person: a name and a reason, on the record</span>. So it can't quietly grind forever chasing perfection, and it can't silently ship past unfixed findings either. Every extra round is a deliberate call — <b>that balance is the whole point of the name.</b></p>
       </div>
+    </div>
 
-      <div class="card">
-        <h3>Tests that actually run</h3>
-        <p class="lead">A requirement is “done” only when a real test passes — one the tool ran itself.</p>
-        <ul class="kv">
-          <li><span class="k">untested</span><span class="v">counts as failing, never as passing.</span></li>
-          <li><span class="k">red first</span><span class="v">the test must fail before the code exists — so it can't be a fake that always passes.</span></li>
-        </ul>
+    <div class="block">
+      <h2>Two hooks — how it plugs into the agent<span class="ref">src/hooks.ts</span></h2>
+      <ul class="defs">
+        <li><span class="term file">SessionStart → prime</span><span class="desc">Every session, it tells the agent which issue is active and which step it's on. Without it, the whole thing is inert.</span></li>
+        <li><span class="term file">PreToolUse → admission</span><span class="desc">Before any source edit, it checks the plan has been reviewed and approved. If not, the edit is refused. Reads and shell commands pass through.</span></li>
+      </ul>
+    </div>
+
+    <div class="block">
+      <h2>Seven skills — one per step</h2>
+      <ul class="defs">
+        <li><span class="term">discovery-interview</span><span class="desc">Interviews the request into a real goal — and a person ratifies it.</span></li>
+        <li><span class="term">shape-strategy</span><span class="desc">Frames the bounded bet: appetite, the smallest real slice, non-goals, risks.</span></li>
+        <li><span class="term">plan-feature</span><span class="desc">Writes the plan and the <b>proof plan</b> — how each requirement will be tested.</span></li>
+        <li><span class="term">review-planning <span class="rev">· Codex</span></span><span class="desc">A different AI reviews the shape + plan before any code. Admits it, or holds it.</span></li>
+        <li><span class="term">implement-feature</span><span class="desc">Builds against the frozen requirements — it can't quietly change them.</span></li>
+        <li><span class="term">review-invariants <span class="rev">· Codex</span></span><span class="desc">A different AI reviews the code, bounded to the three passes above.</span></li>
+        <li><span class="term">orchestrate-delivery</span><span class="desc">Runs the whole thing as three roles: a driver, isolated build workers, and the independent Codex reviewer.</span></li>
+      </ul>
+    </div>
+
+    <div class="block">
+      <h2>The surface — a CLI + MCP server, one SQLite file</h2>
+      <p class="blurb">Everything above is driven through these. All state lives in a single SQLite file — the shared record every step reads and writes, and what the live graph renders.</p>
+      <p class="snip-label">CLI — for a person</p>
+      <div class="toolset">
+        <span class="s-item">discover</span><span class="s-item">shape</span><span class="s-item">plan</span><span class="s-item">prove</span><span class="s-item">review-round</span><span class="s-item">bind</span><span class="s-item">readiness</span><span class="s-item">substrate</span><span class="s-item">serve</span>
       </div>
-
-      <div class="card">
-        <h3>You can't fake the test</h3>
-        <ul class="kv">
-          <li><span class="k">requirement</span><span class="v">names its test.</span></li>
-          <li><span class="k">test</span><span class="v">names the requirement back, in reviewed code.</span></li>
-        </ul>
-        <p>Both halves show up in the diff, so no one can quietly attach a test that can't fail.</p>
-      </div>
-
-      <div class="card">
-        <h3>Reviews that end</h3>
-        <p class="lead">Three rounds, then it stops.</p>
-        <p>No endless polishing — if it isn't passing after three, that's a call for a person, on the record.</p>
-      </div>
-
-      <div class="card">
-        <h3>Reviewed by a different AI</h3>
-        <p class="lead">Review runs on Codex — a different model, over MCP.</p>
-        <p>Real independence: the reviewer never saw the code being written.</p>
+      <p class="snip-label" style="margin-top:16px">MCP tools — same logic, for an agent</p>
+      <div class="toolset">
+        <span class="s-item">discovery_record</span><span class="s-item">shape_record</span><span class="s-item">planning_review_record_pass</span><span class="s-item">review_record_pass</span><span class="s-item">review_upsert_finding</span><span class="s-item">review_record_evidence</span><span class="s-item">review_verify_behavior</span><span class="s-item">delivery_readiness</span>
       </div>
     </div>
   </section>
