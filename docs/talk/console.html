@@ -274,7 +274,7 @@
       <span class="s-item">installs as a <b>Claude Code + Codex plugin</b></span>
     </div>
 
-    <p class="expand-note" style="margin-top:14px">Each step records into a SQLite table &mdash; shown in mono under it. The <span style="color:var(--good)">green</span> columns are <code>CHECK</code> constraints: the rules live in the schema, not in convention. <code>pass_number BETWEEN 1 AND 3</code> is literally &ldquo;no pass four,&rdquo; and <code>verdict(pass|fail|not_run)</code> makes a missing proof its own state &mdash; absence is never a pass.</p>
+    <p class="expand-note" style="margin-top:14px">Each step records into a SQLite table &mdash; shown in mono under it. The <span style="color:var(--good)">green</span> columns are where the rules live &mdash; several enforced by the schema itself as <code>CHECK</code> constraints, not by convention. <code>pass_number BETWEEN 1 AND 3</code> is literally &ldquo;no pass four,&rdquo; and <code>verdict(pass|fail|not_run)</code> makes a missing proof its own state &mdash; absence is never a pass.</p>
 
     <div class="flowline">
       <div class="stg" data-n="▸">
