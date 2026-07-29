@@ -156,12 +156,14 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
     edges.push(edge(`planning-review:${behavior.id}`, "planning-review", behaviorNodeId, { tone: substrate.planning_review.approved ? "blue" : "red", dashed: !substrate.planning_review.approved, animated: behavior.status === "pending" }));
   });
 
-  const evidenceOffset = new Map<string, number>();
-  substrate.evidence.forEach((item, index) => {
-    const key = item.behavior_id ?? "issue";
-    const offset = evidenceOffset.get(key) ?? 0;
-    evidenceOffset.set(key, offset + 1);
-    const y = item.behavior_id ? (behaviorY.get(item.behavior_id) ?? index * 220) + offset * 280 : centerY + index * 280;
+  // Collapse evidence to the latest proof per behavior. The substrate keeps
+  // every prove run (red baselines, reruns, re-verifications), which is dozens
+  // of rows and turns the graph into an unreadable hairball. One node per
+  // behavior — the current proof — is what a reader actually wants to see.
+  const latestEvidence = new Map<string, (typeof substrate.evidence)[number]>();
+  substrate.evidence.forEach((item) => { latestEvidence.set(item.behavior_id ?? "issue", item); });
+  [...latestEvidence.values()].forEach((item, index) => {
+    const y = item.behavior_id ? (behaviorY.get(item.behavior_id) ?? index * 280) : centerY + index * 280;
     const evidenceId = `evidence:${item.id}`;
     nodes.push(node(evidenceId, 2150, y, {
       kind: "evidence",

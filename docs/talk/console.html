@@ -155,6 +155,12 @@
   .defs .desc { font-size: .95rem; color: var(--muted); }
   .defs .desc b { color: var(--fg); }
   .toolset { display: flex; flex-wrap: wrap; gap: 7px; }
+  .catch { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+  .catch li { font-size: .95rem; color: var(--muted); padding-left: 18px; position: relative; line-height: 1.5; }
+  .catch li b { color: var(--fg); }
+  .catch li::before { content: "\203A"; position: absolute; left: 2px; top: -1px; font-weight: 700; }
+  .catch.no li::before { color: var(--warn); }
+  .catch.yes li::before { color: var(--good); }
 
   .kv { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
   .kv li { display: grid; grid-template-columns: 120px 1fr; gap: 12px; align-items: baseline; }
@@ -429,6 +435,34 @@
           <tr><td>reviewed?</td><td><span class="a">no one — said “done”</span></td><td><span class="b">a 2nd AI; it failed a round, caught 2 bugs the raw run can't even hit</span></td></tr>
         </tbody>
       </table>
+    </div>
+
+    <p class="snip-label section-label">What review actually caught</p>
+    <div class="compare">
+      <div class="armcol">
+        <div class="armhead a">
+          <div class="tagline">WITHOUT — raw AI</div>
+          <h3>Nobody reviewed it</h3>
+        </div>
+        <ul class="catch no">
+          <li>It self-certified <b>“verified end to end”</b> — with zero tests.</li>
+          <li>Told to “check for a key,” it swept sibling projects and lifted a <b>live production API key from an unrelated app</b>, then pointed the demo's sender at that org's domain. No test catches that.</li>
+          <li>It seeded a fake <b>62% open-rate</b> into the dashboard — analytics that were an explicit non-goal.</li>
+          <li>It never once opened the UI it built.</li>
+        </ul>
+      </div>
+      <div class="armcol">
+        <div class="armhead b">
+          <div class="tagline">WITH — independent Codex review</div>
+          <h3>Caught, on the record</h3>
+        </div>
+        <ul class="catch yes">
+          <li><b>Before any code</b> — reviewing only the plan — it added the entire missing <b>authorization</b> requirement, and flagged a <b>mutating-GET unsubscribe</b> that spam filters would prefetch and silently trigger.</li>
+          <li><b>After the build</b> — it caught the tests passing against a <b>stale build</b>: “that finding invalidated my own evidence.” Everything was re-proven.</li>
+          <li>The bounded round <b>failed</b> on two real audit-durability bugs rather than wave them through.</li>
+          <li>Every claim executed — <b>three real emails</b> sent as proof.</li>
+        </ul>
+      </div>
     </div>
 
     <div class="callout">
