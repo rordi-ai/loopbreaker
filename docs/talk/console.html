@@ -176,7 +176,7 @@
   .shared-input { margin-top: 26px; display: flex; flex-direction: column; gap: 7px; border: 1px dashed var(--line2); border-radius: 12px; padding: 16px 20px; background: var(--panel); }
   .shared-input .si-label { font-family: var(--font-mono); font-size: .73rem; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
   .shared-input .si-text { font-size: clamp(1.05rem, 1.8vw, 1.3rem); }
-  .expand-row { display: grid; grid-template-columns: 1fr 1.25fr; gap: 18px; margin-top: 16px; align-items: start; }
+  .expand-row { display: grid; grid-template-columns: 1fr 1.25fr; gap: 18px; margin-top: 16px; align-items: stretch; }
   @media (max-width: 880px) { .expand-row { grid-template-columns: 1fr; } }
   .expand-col { border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; background: var(--panel); }
   .expand-col.without { border-top: 3px solid var(--warn); }
@@ -190,9 +190,10 @@
 
   .snip-label { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); margin: 0 0 7px; text-transform: uppercase; letter-spacing: .06em; }
   .section-label { margin-top: 34px; font-size: .8rem; color: var(--muted); }
-  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 12px; align-items: start; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 12px; align-items: stretch; }
   @media (max-width: 880px) { .compare { grid-template-columns: 1fr; } }
   .armcol { display: flex; flex-direction: column; gap: 14px; }
+  .armcol > .card { margin-top: auto; }
   .armhead { border: 1px solid var(--line2); border-radius: 14px; padding: 15px 20px; }
   .armhead.a { background: color-mix(in srgb, var(--warn) 8%, var(--panel)); }
   .armhead.b { background: color-mix(in srgb, var(--good) 8%, var(--panel)); }
@@ -264,7 +265,7 @@
   <section data-view="pipeline" class="active">
     <p class="eyebrow">structure + verification · one session</p>
     <h1 class="view-h">One agent session, from prompt to ship.</h1>
-    <p class="view-sub">loopbreaker adds two things to an AI coding agent, inside a single session. <b>Structure:</b> an ordered pipeline &mdash; discovery, a human approval, an independent plan review, the build, code review &mdash; taken in order. <b>Verification:</b> every requirement is checked by a test the tool runs itself, and the exit code is the verdict &mdash; never a claim. Each stage below lists what runs, the skill and the MCP tool or CLI command behind it, the SQLite table it writes, and where the hooks apply.</p>
+    <p class="view-sub">loopbreaker adds two things to an AI coding agent, inside a single session. <b>Structure:</b> an ordered pipeline &mdash; discovery, a human approval, an independent plan review, the build, code review &mdash; taken in order. <b>Verification:</b> every behavior is checked by a test the tool runs itself, and the exit code is the verdict &mdash; never a claim. Each stage below lists what runs, the skill and the MCP tool or CLI command behind it, the SQLite table it writes, and where the hooks apply.</p>
 
     <div class="stack">
       <span class="s-item">a <b>CLI</b> + <b>MCP server</b></span>
@@ -308,7 +309,7 @@
 
       <div class="stg" data-n="3">
         <h3>Shape &amp; plan &mdash; the bet, then the contract</h3>
-        <p class="what">The agent frames a bounded bet, then writes the <b>behavior contract</b> &mdash; the enforced requirements &mdash; and a <b>proof plan</b> for how each one is tested. Those requirements then freeze. Source edits are still blocked here, and that's the second hook: it runs on every Edit/Write and returns <b>deny</b> while the issue is unadmitted &mdash; the denial message it returns is the exact active gate, so the agent reads what to do next. Shell commands and file reads pass straight through.</p>
+        <p class="what">The agent frames a bounded bet, then writes the <b>behavior contract</b> &mdash; the enforced behaviors &mdash; and a <b>proof plan</b> for how each is tested. Those behaviors then freeze. Source edits are still blocked here, and that's the second hook: it runs on every Edit/Write and returns <b>deny</b> while the issue is unadmitted &mdash; the denial message it returns is the exact active gate, so the agent reads what to do next. Shell commands and file reads pass straight through.</p>
         <div class="map">
           <span class="m"><span class="mk">skills</span><span class="mv">shape-strategy &middot; plan-feature</span></span>
           <span class="m"><span class="mk">writes</span><span class="mv">shape_record &middot; planning_record</span></span>
@@ -319,7 +320,7 @@
 
       <div class="stg codex" data-n="4">
         <h3>Plan review &mdash; a different AI, before any code <span class="who codex">2nd AI &middot; Codex</span></h3>
-        <p class="what">The plan goes to a second model (Codex, in a throwaway checkout of the exact commit). It can <b>add requirements</b> and catch design bugs on paper &mdash; here it added the whole authorization behavior and flagged a mutating unsubscribe link &mdash; then admit the build or hold it. Bounded to three passes. On approval, implementation is admitted and the hook starts allowing edits.</p>
+        <p class="what">The plan goes to a second model (Codex, in a throwaway checkout of the exact commit). It can <b>add behaviors</b> and catch design bugs on paper &mdash; here it added the whole authorization behavior and flagged a mutating unsubscribe link &mdash; then admit the build or hold it. Bounded to three passes. On approval, implementation is admitted and the hook starts allowing edits.</p>
         <div class="map">
           <span class="m"><span class="mk">skill</span><span class="mv">review-planning &middot; Codex CLI</span></span>
           <span class="m"><span class="mk">writes</span><span class="mv">planning_review_record_pass &middot; _upsert_finding</span></span>
@@ -364,7 +365,7 @@
 
       <div class="stg" data-n="7">
         <h3>Ship &mdash; only if it's earned</h3>
-        <p class="what">Ship only when every enforced requirement is verified on <b>executed proof</b> (or explicitly waived). Review being finished and being shippable are separate facts.</p>
+        <p class="what">Ship only when every enforced behavior is verified on <b>executed proof</b> (or explicitly waived). Review being finished and being shippable are separate facts.</p>
         <div class="map">
           <span class="m"><span class="mk">reads</span><span class="mv">review_ship_status &middot; loopbreaker readiness</span></span>
         </div>
@@ -482,7 +483,7 @@
           <h3>Caught, on the record</h3>
         </div>
         <ul class="catch yes">
-          <li><b>Before any code</b> — reviewing only the plan — it added the entire missing <b>authorization</b> requirement, and flagged a <b>mutating-GET unsubscribe</b> that spam filters would prefetch and silently trigger.</li>
+          <li><b>Before any code</b> — reviewing only the plan — it added the entire missing <b>authorization</b> behavior, and flagged a <b>mutating-GET unsubscribe</b> that spam filters would prefetch and silently trigger.</li>
           <li><b>After the build</b> — it caught the tests passing against a <b>stale build</b>: “that finding invalidated my own evidence.” Everything was re-proven.</li>
           <li>The bounded round <b>failed</b> on two real audit-durability bugs rather than wave them through.</li>
           <li>Every claim executed — <b>three real emails</b> sent as proof.</li>
