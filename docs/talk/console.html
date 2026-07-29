@@ -123,8 +123,13 @@
   .stack { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
   .s-item { font-family: var(--font-mono); font-size: .78rem; color: var(--muted); border: 1px solid var(--line2); border-radius: 7px; padding: 5px 11px; background: var(--panel); }
   .s-item b { color: var(--accent); font-weight: 600; }
-  .graph-frame { position: relative; left: 50%; transform: translateX(-50%); width: 94vw; max-width: 1780px; height: 76vh; margin-top: 22px; border: 1px solid var(--line2); border-radius: 14px; overflow: hidden; background: var(--panel); }
+  .graph-frame { position: relative; left: 50%; transform: translateX(-50%); width: 97vw; max-width: 2000px; height: 84vh; margin-top: 14px; border: 1px solid var(--line2); border-radius: 14px; overflow: hidden; background: var(--panel); }
   .graph-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .fs-btn { position: absolute; top: 12px; right: 14px; z-index: 5; font-family: var(--font-mono); font-size: .78rem; color: var(--fg); background: color-mix(in srgb, var(--bg) 78%, transparent); border: 1px solid var(--line2); border-radius: 8px; padding: 7px 12px; cursor: pointer; backdrop-filter: blur(6px); }
+  .fs-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .fs-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .graph-frame:fullscreen { width: 100vw; height: 100vh; max-width: none; margin: 0; left: 0; transform: none; border: 0; border-radius: 0; }
+  .graph-frame:fullscreen iframe { height: 100vh; }
 
   .block { margin-top: 36px; }
   .block h2 { font-size: 1.18rem; margin-bottom: 6px; }
@@ -330,10 +335,10 @@
 
   <!-- ================= 3 — LIVE RUN ================= -->
   <section data-view="run">
-    <p class="eyebrow">The real app · live over WebSocket</p>
-    <h1 class="view-h" style="font-size:clamp(1.6rem,3vw,2.2rem)">One feature, taken all the way — for real</h1>
-    <p class="view-sub">The actual tool, live. A single feature — <em>“design and send a marketing email”</em> — that an AI built, a second AI reviewed, and every requirement passed a test that really ran. Every node is green; it's ready to ship. Zoom, pan, click a node to see what it recorded.</p>
-    <div class="graph-frame">
+    <p class="eyebrow" style="margin-bottom:6px">The real app · live over WebSocket · one feature, all the way to ship</p>
+    <h1 class="view-h" style="font-size:clamp(1.3rem,2.3vw,1.65rem)">The review graph, straight from the running tool<span style="color:var(--muted);font-weight:400;font-size:.82em"> — zoom, pan, click a node</span></h1>
+    <div class="graph-frame" id="graphFrame">
+      <button class="fs-btn" id="fsBtn" type="button">⛶ Full screen</button>
       <iframe src="https://acfs-dev.tail063234.ts.net:8448/" title="Live loopbreaker review graph — MKTG-EMAIL-1" loading="lazy"></iframe>
     </div>
     <p class="hint">Live from the loopbreaker app itself. If the frame is blank, the app process is down — relaunch it.</p>
@@ -460,6 +465,18 @@
       var h = location.hash.slice(1);
       if (order.indexOf(h) >= 0) show(h);
     });
+    var fsBtn = document.getElementById('fsBtn');
+    var graphFrame = document.getElementById('graphFrame');
+    if (fsBtn && graphFrame) {
+      fsBtn.addEventListener('click', function () {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else if (graphFrame.requestFullscreen) graphFrame.requestFullscreen();
+      });
+      document.addEventListener('fullscreenchange', function () {
+        fsBtn.textContent = document.fullscreenElement ? '✕ Exit full screen' : '⛶ Full screen';
+      });
+    }
+
     var initial = location.hash.slice(1);
     show(order.indexOf(initial) >= 0 ? initial : 'pipeline');
   })();
