@@ -309,7 +309,7 @@
 
       <div class="stg" data-n="3">
         <h3>Shape &amp; plan &mdash; the bet, then the contract</h3>
-        <p class="what">The agent frames a bounded bet, then writes the <b>behavior contract</b> &mdash; the enforced behaviors &mdash; and a <b>proof plan</b> for how each is tested. Those behaviors then freeze. Source edits are still blocked here, and that's the second hook: it runs on every Edit/Write and returns <b>deny</b> while the issue is unadmitted &mdash; the denial message it returns is the exact active gate, so the agent reads what to do next. Shell commands and file reads pass straight through.</p>
+        <p class="what">The agent frames a bounded bet, then writes the <b>behavior contract</b> &mdash; the enforced behaviors &mdash; and a <b>proof plan</b> for how each is tested. That contract is the acceptance surface, but it's still open to the review that comes next. Source edits are still blocked here, and that's the second hook: it runs on every Edit/Write and returns <b>deny</b> while the issue is unadmitted &mdash; the denial message it returns is the exact active gate, so the agent reads what to do next. Shell commands and file reads pass straight through.</p>
         <div class="map">
           <span class="m"><span class="mk">skills</span><span class="mv">shape-strategy &middot; plan-feature</span></span>
           <span class="m"><span class="mk">writes</span><span class="mv">shape_record &middot; planning_record</span></span>
@@ -320,7 +320,7 @@
 
       <div class="stg codex" data-n="4">
         <h3>Plan review &mdash; a different AI, before any code <span class="who codex">2nd AI &middot; Codex</span></h3>
-        <p class="what">The plan goes to a second model (Codex, in a throwaway checkout of the exact commit). It can <b>add behaviors</b> and catch design bugs on paper &mdash; here it added the whole authorization behavior and flagged a mutating unsubscribe link &mdash; then admit the build or hold it. Bounded to three passes. On approval, implementation is admitted and the hook starts allowing edits.</p>
+        <p class="what">The plan goes to a second model (Codex, in a throwaway checkout of the exact commit). It can <b>add behaviors</b> and catch design bugs on paper &mdash; here it added the whole authorization behavior and flagged a mutating unsubscribe link &mdash; then admit the build or hold it. Bounded to three passes. On approval the <b>behavior set freezes</b>, implementation is admitted, and the hook starts allowing edits.</p>
         <div class="map">
           <span class="m"><span class="mk">skill</span><span class="mv">review-planning &middot; Codex CLI</span></span>
           <span class="m"><span class="mk">writes</span><span class="mv">planning_review_record_pass &middot; _upsert_finding</span></span>

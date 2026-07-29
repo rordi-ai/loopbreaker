@@ -104,6 +104,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
     status: substrate.planning_review.approved ? "implementation admitted" : "implementation held",
     tone: planningReviewTone,
     lines: [
+      { label: "ON APPROVAL", value: "freezes the behavior set (the fan →) and admits the build" },
       { label: "PASSES", value: `${substrate.planning_review.pass_count}/3 maximum` },
       { label: "NEXT", value: substrate.planning_review.next_action.replaceAll("_", " ") },
       { label: "BLOCKERS", value: String(substrate.planning_review.open_blocking_count) },
