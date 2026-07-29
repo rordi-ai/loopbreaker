@@ -54,7 +54,6 @@
   h1,h2,h3 { text-wrap: balance; margin: 0; letter-spacing: -.02em; }
   code, pre, .mono, .chip, .gate-state, .kv b { font-family: var(--font-mono); }
 
-  /* ---- top bar ---- */
   header {
     position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent);
     backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
@@ -77,7 +76,6 @@
   nav button[aria-current="true"] .n { color: var(--accent); }
   nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  /* ---- view scaffolding ---- */
   section[data-view] { display: none; padding: clamp(24px,4vh,44px) 0 80px; }
   section[data-view].active { display: block; animation: fade .28s ease both; }
   @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -85,96 +83,95 @@
 
   .eyebrow { font-family: var(--font-mono); font-size: .76rem; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
   .view-h { font-size: clamp(1.7rem, 3.4vw, 2.5rem); line-height: 1.05; }
-  .view-sub { color: var(--muted); max-width: 70ch; margin-top: 12px; font-size: 1.02rem; }
+  .view-sub { color: var(--muted); max-width: 68ch; margin-top: 12px; font-size: 1.02rem; }
+  .view-sub em { color: var(--fg); font-style: normal; }
 
-  /* ---- gate spine ---- */
+  /* ---- step flow ---- */
   .spine-scroll { overflow-x: auto; padding: 8px 0 14px; margin-top: 26px; }
   .spine { display: flex; align-items: stretch; gap: 0; min-width: min-content; }
   .gate {
-    flex: 0 0 auto; width: 152px; background: var(--panel); border: 1px solid var(--line2);
+    flex: 0 0 auto; width: 156px; background: var(--panel); border: 1px solid var(--line2);
     border-radius: 12px; padding: 12px 13px; display: flex; flex-direction: column; gap: 7px;
-    position: relative;
   }
-  .gate .g-role { font-family: var(--font-mono); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+  .gate .g-role { font-family: var(--font-mono); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
   .gate .g-name { font-size: .98rem; font-weight: 600; line-height: 1.15; letter-spacing: -.01em; }
-  .gate .g-meta { font-family: var(--font-mono); font-size: .74rem; color: var(--muted); line-height: 1.35; margin-top: auto; }
+  .gate .g-meta { font-family: var(--font-mono); font-size: .73rem; color: var(--muted); line-height: 1.35; margin-top: auto; }
   .gate-state { font-size: .72rem; padding: 2px 7px; border-radius: 5px; align-self: flex-start; border: 1px solid; }
   .st-pass { color: var(--good); border-color: var(--good-dim); background: color-mix(in srgb, var(--good) 12%, transparent); }
   .st-fail { color: var(--warn); border-color: var(--warn-dim); background: color-mix(in srgb, var(--warn) 12%, transparent); }
   .st-info { color: var(--accent); border-color: var(--accent-dim); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-  .st-idle { color: var(--muted); border-color: var(--line2); }
   .conn { flex: 0 0 auto; align-self: center; width: 20px; text-align: center; color: var(--faint); font-family: var(--font-mono); }
   .gate.human { border-color: color-mix(in srgb, var(--amber) 55%, var(--line2)); }
   .gate.human .g-role { color: var(--amber); }
   .gate.codex { border-style: dashed; }
+  .gate.codex .g-role { color: var(--accent); }
 
-  /* ---- detail grid ---- */
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 30px; align-items: start; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
-  .card.span2 { grid-column: span 2; }
-  @media (max-width: 720px) { .card.span2 { grid-column: span 1; } }
   .card h3 { font-size: 1.06rem; display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-  .card h3 .tick { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); }
+  .card h3 .tick { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); margin-left: auto; }
   .card p { color: var(--muted); margin: 8px 0 0; font-size: .96rem; }
   .card p.lead { color: var(--fg); }
 
   .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 38px; }
   @media (max-width: 820px) { .tiles { grid-template-columns: 1fr; } }
   .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px 22px; }
-  .tile .t-tag { font-family: var(--font-mono); font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+  .tile .t-tag { font-family: var(--font-mono); font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
   .tile h3 { font-size: 1.16rem; margin: 12px 0 9px; }
-  .tile p { color: var(--muted); font-size: .95rem; margin: 0; max-width: 34ch; }
+  .tile p { color: var(--muted); font-size: .95rem; margin: 0; max-width: 36ch; }
+
+  .stack { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .s-item { font-family: var(--font-mono); font-size: .78rem; color: var(--muted); border: 1px solid var(--line2); border-radius: 7px; padding: 5px 11px; background: var(--panel); }
+  .s-item b { color: var(--accent); font-weight: 600; }
+  .graph-frame { position: relative; left: 50%; transform: translateX(-50%); width: 94vw; max-width: 1780px; height: 76vh; margin-top: 22px; border: 1px solid var(--line2); border-radius: 14px; overflow: hidden; background: var(--panel); }
+  .graph-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
 
   .kv { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
-  .kv li { display: grid; grid-template-columns: 128px 1fr; gap: 12px; align-items: baseline; }
-  .kv .k { font-family: var(--font-mono); font-size: .74rem; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
+  .kv li { display: grid; grid-template-columns: 120px 1fr; gap: 12px; align-items: baseline; }
+  .kv .k { font-family: var(--font-mono); font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); }
   .kv .v { font-size: .94rem; }
   .kv b { color: var(--fg); font-weight: 600; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
   .chip { font-size: .78rem; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--line2); color: var(--muted); background: var(--panel2); }
-  .chip.ok { color: var(--good); border-color: var(--good-dim); }
-  .chip.no { color: var(--warn); border-color: var(--warn-dim); }
   .chip.hl { color: var(--accent); border-color: var(--accent-dim); }
 
-  .findings { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-  .finding { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); }
-  .finding .sev { font-family: var(--font-mono); font-size: .74rem; color: var(--warn); padding-top: 1px; }
-  .finding .ftxt { font-size: .9rem; }
-  .finding .ftxt .fid { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); }
-  .finding .verdict { font-family: var(--font-mono); font-size: .72rem; white-space: nowrap; }
-  .verdict.repaired { color: var(--good); }
-  .verdict.survived { color: var(--warn); }
+  /* ---- compare ---- */
+  .shared-input { margin-top: 26px; display: flex; flex-direction: column; gap: 7px; border: 1px dashed var(--line2); border-radius: 12px; padding: 16px 20px; background: var(--panel); }
+  .shared-input .si-label { font-family: var(--font-mono); font-size: .73rem; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
+  .shared-input .si-text { font-size: clamp(1.05rem, 1.8vw, 1.3rem); }
+  .expand-row { display: grid; grid-template-columns: 1fr 1.25fr; gap: 18px; margin-top: 16px; align-items: start; }
+  @media (max-width: 880px) { .expand-row { grid-template-columns: 1fr; } }
+  .expand-col { border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; background: var(--panel); }
+  .expand-col.without { border-top: 3px solid var(--warn); }
+  .expand-col.with { border-top: 3px solid var(--good); }
+  .expand-note { color: var(--muted); font-size: .95rem; margin: 12px 0 0; }
+  .expand-note b { color: var(--fg); }
+  .qa { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+  .qa li { display: flex; flex-direction: column; gap: 3px; }
+  .qa .q { font-family: var(--font-mono); font-size: .82rem; color: var(--accent); }
+  .qa .a { font-size: .96rem; color: var(--fg); }
 
-  .rounds { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
-  .round { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  .round .rhead { display: flex; align-items: center; gap: 10px; padding: 9px 13px; background: var(--panel2); font-family: var(--font-mono); font-size: .82rem; }
-  .round .passes { display: flex; gap: 6px; padding: 10px 13px; flex-wrap: wrap; }
-  .pass { font-family: var(--font-mono); font-size: .72rem; padding: 3px 8px; border-radius: 5px; border: 1px solid; }
-  .pass.f { color: var(--warn); border-color: var(--warn-dim); background: color-mix(in srgb, var(--warn) 10%, transparent); }
-  .pass.p { color: var(--good); border-color: var(--good-dim); background: color-mix(in srgb, var(--good) 10%, transparent); }
-
-  /* ---- compare view ---- */
-  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 28px; align-items: start; }
-  @media (max-width: 860px) { .compare { grid-template-columns: 1fr; } }
-  .armcol { display: flex; flex-direction: column; gap: 16px; }
-  .armhead { border: 1px solid var(--line2); border-radius: 14px 14px 0 0; padding: 16px 20px; border-bottom: none; }
+  .snip-label { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); margin: 0 0 7px; text-transform: uppercase; letter-spacing: .06em; }
+  .section-label { margin-top: 34px; font-size: .8rem; color: var(--muted); }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 12px; align-items: start; }
+  @media (max-width: 880px) { .compare { grid-template-columns: 1fr; } }
+  .armcol { display: flex; flex-direction: column; gap: 14px; }
+  .armhead { border: 1px solid var(--line2); border-radius: 14px; padding: 15px 20px; }
   .armhead.a { background: color-mix(in srgb, var(--warn) 8%, var(--panel)); }
   .armhead.b { background: color-mix(in srgb, var(--good) 8%, var(--panel)); }
-  .armhead .tagline { font-family: var(--font-mono); font-size: .78rem; color: var(--muted); }
-  .armhead h3 { font-size: 1.2rem; margin-top: 4px; }
-  .armhead .who { font-size: .9rem; color: var(--muted); margin-top: 6px; }
+  .armhead .tagline { font-family: var(--font-mono); font-size: .76rem; color: var(--muted); }
+  .armhead h3 { font-size: 1.14rem; margin-top: 4px; }
   pre {
     margin: 0; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px;
-    padding: 14px 16px; overflow-x: auto; font-size: .82rem; line-height: 1.6;
+    padding: 14px 16px; overflow-x: auto; font-size: .8rem; line-height: 1.62;
   }
   pre .cm { color: var(--faint); }
   pre .warnt { color: var(--warn); }
   pre .goodt { color: var(--good); }
   pre .kw { color: var(--accent); }
-  .snip-label { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); margin: 0 0 7px; text-transform: uppercase; letter-spacing: .06em; }
 
-  .scorecard { margin-top: 26px; border: 1px solid var(--line2); border-radius: 14px; overflow: hidden; }
+  .scorecard { margin-top: 22px; border: 1px solid var(--line2); border-radius: 14px; overflow: hidden; }
   .scorecard table { border-collapse: collapse; width: 100%; font-size: .94rem; }
   .scorecard th, .scorecard td { text-align: left; padding: 13px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
   .scorecard thead th { font-family: var(--font-mono); font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); background: var(--panel2); }
@@ -182,11 +179,11 @@
   .scorecard td .a { color: var(--warn); } .scorecard td .b { color: var(--good); }
   .scorecard tr:last-child td { border-bottom: none; }
 
-  .callout { margin-top: 26px; border-left: 3px solid var(--accent); background: var(--panel); border-radius: 0 12px 12px 0; padding: 16px 22px; }
+  .callout { margin-top: 24px; border-left: 3px solid var(--accent); background: var(--panel); border-radius: 0 12px 12px 0; padding: 16px 22px; }
   .callout p { margin: 0; font-size: 1.05rem; }
   .callout .big { font-weight: 600; letter-spacing: -.01em; }
-  .foot { color: var(--faint); font-family: var(--font-mono); font-size: .78rem; margin-top: 30px; }
-  .hint { color: var(--faint); font-family: var(--font-mono); font-size: .74rem; }
+  .foot { color: var(--faint); font-family: var(--font-mono); font-size: .78rem; margin-top: 28px; }
+  .hint { color: var(--faint); font-family: var(--font-mono); font-size: .74rem; margin-top: 14px; }
 </style>
 </head>
 <body>
@@ -195,266 +192,200 @@
   <div class="wrap bar">
     <div class="brand">
       <span class="mark">loop<span class="b">breaker</span></span>
-      <span class="tag">bounded review over a contract from outside the loop</span>
+      <span class="tag">quality control for code an AI writes</span>
     </div>
     <nav aria-label="Views">
-      <button data-go="pipeline" aria-current="true"><span class="n">1</span> Pipeline</button>
-      <button data-go="internals"><span class="n">2</span> Internals</button>
-      <button data-go="run"><span class="n">3</span> The run</button>
-      <button data-go="compare"><span class="n">4</span> Arm A vs Arm B</button>
+      <button data-go="pipeline" aria-current="true"><span class="n">1</span> How it works</button>
+      <button data-go="internals"><span class="n">2</span> Under the hood</button>
+      <button data-go="run"><span class="n">3</span> Live run</button>
+      <button data-go="compare"><span class="n">4</span> With vs without</button>
     </nav>
   </div>
 </header>
 
 <main class="wrap">
 
-  <!-- ================= VIEW 1 — PIPELINE ================= -->
+  <!-- ================= 1 — HOW IT WORKS ================= -->
   <section data-view="pipeline" class="active">
-    <p class="eyebrow">The pipeline</p>
-    <h1 class="view-h">Six ordered gates. Two things an agent can't fake.</h1>
-    <p class="view-sub">No source edit is allowed until an issue clears the gates in order — the premise comes from a human, the proof comes from an exit code.</p>
+    <p class="eyebrow">The idea</p>
+    <h1 class="view-h">An AI can build it fast. This makes sure it's actually right.</h1>
+    <p class="view-sub">Two things sink AI-written code: it builds the <em>wrong thing</em>, or it says “tests pass” when <em>nothing ran</em>. This closes both — a person pins down the goal up front, and every requirement is checked by a test that actually runs.</p>
+
+    <div class="stack">
+      <span class="s-item">a <b>CLI</b> + <b>MCP server</b></span>
+      <span class="s-item">TypeScript on Node</span>
+      <span class="s-item">state in <b>SQLite</b> (built-in, no native deps)</span>
+      <span class="s-item">live graph: React + WebSocket</span>
+      <span class="s-item">installs as a <b>Claude Code + Codex plugin</b></span>
+    </div>
 
     <div class="spine-scroll">
       <div class="spine">
-        <div class="gate human"><span class="g-role">human · gate 0</span><span class="g-name">Discovery</span><span class="gate-state st-info">interview → ratify</span><span class="g-meta">premise from a person, not the agent</span></div>
+        <div class="gate human"><span class="g-role">human · start</span><span class="g-name">The goal</span><span class="gate-state st-info">a person sets it</span><span class="g-meta">what to build, and why</span></div>
         <span class="conn">→</span>
-        <div class="gate"><span class="g-role">gate 1</span><span class="g-name">Shape</span><span class="gate-state st-info">bounded bet</span><span class="g-meta">appetite · slice · non-goals · risks</span></div>
+        <div class="gate"><span class="g-role">step 2</span><span class="g-name">Scope</span><span class="gate-state st-info">sized</span><span class="g-meta">how big · what's left out</span></div>
         <span class="conn">→</span>
-        <div class="gate"><span class="g-role">gate 2</span><span class="g-name">Plan</span><span class="gate-state st-info">health ≥ 80</span><span class="g-meta">scope · contract · proof plan</span></div>
+        <div class="gate"><span class="g-role">step 3</span><span class="g-name">Plan</span><span class="gate-state st-info">planned</span><span class="g-meta">how it'll be built</span></div>
         <span class="conn">→</span>
-        <div class="gate codex"><span class="g-role">codex · gate 3</span><span class="g-name">Planning review</span><span class="gate-state st-info">≤ 3 passes</span><span class="g-meta">independent — admits or holds</span></div>
-        <span class="conn">⇥</span>
-        <div class="gate"><span class="g-role">gate 4</span><span class="g-name">Implement + Prove</span><span class="gate-state st-info">red → green</span><span class="g-meta">harness first, exit code = verdict</span></div>
+        <div class="gate codex"><span class="g-role">2nd AI</span><span class="g-name">Plan review</span><span class="gate-state st-info">checked</span><span class="g-meta">a different AI reviews it</span></div>
         <span class="conn">→</span>
-        <div class="gate codex"><span class="g-role">codex · gate 5</span><span class="g-name">Code review</span><span class="gate-state st-info">≤ 3 passes</span><span class="g-meta">comprehensive · repair · decision</span></div>
+        <div class="gate"><span class="g-role">step 5</span><span class="g-name">Build + test</span><span class="gate-state st-info">tested for real</span><span class="g-meta">build it, then run the tests</span></div>
         <span class="conn">→</span>
-        <div class="gate"><span class="g-role">gate 6</span><span class="g-name">Ship</span><span class="gate-state st-info">every behavior verified</span><span class="g-meta">separate fact from review</span></div>
+        <div class="gate codex"><span class="g-role">2nd AI</span><span class="g-name">Code review</span><span class="gate-state st-info">reviewed</span><span class="g-meta">a different AI reads the code</span></div>
+        <span class="conn">→</span>
+        <div class="gate"><span class="g-role">step 7</span><span class="g-name">Ship</span><span class="gate-state st-info">meets the bar</span><span class="g-meta">only if every test passed</span></div>
       </div>
     </div>
-    <p class="hint">⇥ admission — no work starts before it. Dashed nodes run on a different vendor (Codex), so review is independent by construction.</p>
+    <p class="hint">The two review steps run on a <em>different</em> AI (Codex) — so nothing signs off on its own work.</p>
 
     <div class="tiles">
-      <div class="tile"><span class="t-tag">in</span><h3>Premise from a human</h3><p>Gate 0 — a person ratifies what the change is for. The one input a code reviewer never gets.</p></div>
-      <div class="tile"><span class="t-tag">between</span><h3>Bounded review</h3><p>Three passes, then the round ends. No pass four. The loop can't run forever.</p></div>
-      <div class="tile"><span class="t-tag">out</span><h3>Proof from an exit code</h3><p>A behavior is verified only when a harness loopbreaker ran itself exits 0. Claims don't count.</p></div>
+      <div class="tile"><span class="t-tag">right thing</span><h3>The goal comes from a person</h3><p>The work starts from what someone actually asked for — not the AI's guess at what they meant.</p></div>
+      <div class="tile"><span class="t-tag">actually works</span><h3>Proven, not claimed</h3><p>A requirement counts as done only when a test that really runs passes. No “trust me, it works.”</p></div>
+      <div class="tile"><span class="t-tag">independent</span><h3>Checked by another AI</h3><p>A second model reviews the plan and the code — and it stops after a few rounds instead of polishing forever.</p></div>
     </div>
   </section>
 
-  <!-- ================= VIEW 2 — INTERNALS ================= -->
+  <!-- ================= 2 — UNDER THE HOOD ================= -->
   <section data-view="internals">
     <p class="eyebrow">Under the hood</p>
-    <h1 class="view-h">What turns the flow into a wall</h1>
-    <p class="view-sub">Six small mechanisms. Together they mean no context ever grades its own work.</p>
+    <h1 class="view-h">How it keeps the work honest</h1>
+    <p class="view-sub">A handful of small pieces. Together they make sure no part of the system gets to sign off on its own work.</p>
 
     <div class="grid">
       <div class="card">
-        <h3>Two hooks <span class="tick">src/hooks.ts</span></h3>
+        <h3>It plugs into the agent <span class="tick">src/hooks.ts</span></h3>
         <ul class="kv">
-          <li><span class="k">SessionStart</span><span class="v"><b>prime</b> — binds the active issue.</span></li>
-          <li><span class="k">PreToolUse</span><span class="v"><b>admission</b> — <span style="color:var(--warn)">denies</span> source edits until the gates pass.</span></li>
+          <li><span class="k">on start</span><span class="v">reminds the agent what it's building.</span></li>
+          <li><span class="k">before edits</span><span class="v">stops it jumping to code before the plan is checked.</span></li>
         </ul>
-        <p>A wall in front of the editor, not advice.</p>
+        <p>So the process actually happens — instead of being a doc the agent ignores.</p>
       </div>
 
       <div class="card">
-        <h3>Seven skills</h3>
+        <h3>One skill per step</h3>
         <div class="chips">
-          <span class="chip">discovery-interview</span><span class="chip">shape-strategy</span>
-          <span class="chip">plan-feature</span><span class="chip hl">review-planning</span>
-          <span class="chip">implement-feature</span><span class="chip hl">review-invariants</span>
-          <span class="chip">orchestrate-delivery</span>
+          <span class="chip">interview</span><span class="chip">scope</span>
+          <span class="chip">plan</span><span class="chip hl">review plan</span>
+          <span class="chip">build</span><span class="chip hl">review code</span>
+          <span class="chip">orchestrate</span>
         </div>
-        <p>The two highlighted are reviewers — they inspect and record, never edit.</p>
+        <p>The two highlighted only review — they read and record, they never touch the code.</p>
       </div>
 
       <div class="card">
-        <h3>Executed evidence</h3>
-        <p class="lead"><code>prove</code> runs the harness; the verdict is its exit code.</p>
+        <h3>Tests that actually run</h3>
+        <p class="lead">A requirement is “done” only when a real test passes — one the tool ran itself.</p>
         <ul class="kv">
-          <li><span class="k">not_run</span><span class="v">fail-closed default.</span></li>
-          <li><span class="k">red-first</span><span class="v">must fail before the work exists.</span></li>
+          <li><span class="k">untested</span><span class="v">counts as failing, never as passing.</span></li>
+          <li><span class="k">red first</span><span class="v">the test must fail before the code exists — so it can't be a fake that always passes.</span></li>
         </ul>
       </div>
 
       <div class="card">
-        <h3>Two-way binding</h3>
+        <h3>You can't fake the test</h3>
         <ul class="kv">
-          <li><span class="k">behavior</span><span class="v">names its harness.</span></li>
-          <li><span class="k">harness</span><span class="v">names the behavior back, in a diff.</span></li>
+          <li><span class="k">requirement</span><span class="v">names its test.</span></li>
+          <li><span class="k">test</span><span class="v">names the requirement back, in reviewed code.</span></li>
         </ul>
-        <p>Neither half alone counts.</p>
+        <p>Both halves show up in the diff, so no one can quietly attach a test that can't fail.</p>
       </div>
 
       <div class="card">
-        <h3>Bounded passes</h3>
-        <p class="lead">comprehensive → repair → decision. No pass four.</p>
-        <p>A spent round ends the round, not the issue — reopening is a named human act.</p>
+        <h3>Reviews that end</h3>
+        <p class="lead">Three rounds, then it stops.</p>
+        <p>No endless polishing — if it isn't passing after three, that's a call for a person, on the record.</p>
       </div>
 
       <div class="card">
-        <h3>Different-vendor reviewer</h3>
-        <p class="lead">Review runs on the <b>Codex CLI</b>, over MCP.</p>
-        <p>Independence is structural — a model family that never saw the build.</p>
+        <h3>Reviewed by a different AI</h3>
+        <p class="lead">Review runs on Codex — a different model, over MCP.</p>
+        <p>Real independence: the reviewer never saw the code being written.</p>
       </div>
     </div>
   </section>
 
-  <!-- ================= VIEW 2 — THE RUN ================= -->
+  <!-- ================= 3 — LIVE RUN ================= -->
   <section data-view="run">
-    <p class="eyebrow">MKTG-EMAIL-1 · one issue, all the way to ship</p>
-    <h1 class="view-h">“Design and send a marketing email from the dashboard” — through every gate</h1>
-    <p class="view-sub">The same one-line desire as Arm A. Here is what the substrate actually recorded, gate by gate. Every green mark below is a fact the database holds, not a claim.</p>
-
-    <div class="spine-scroll">
-      <div class="spine">
-        <div class="gate human"><span class="g-role">human · gate 0</span><span class="g-name">Discovery</span><span class="gate-state st-pass">approved</span><span class="g-meta">by Ben Freed · 07-28</span></div>
-        <span class="conn">→</span>
-        <div class="gate"><span class="g-role">gate 1</span><span class="g-name">Shape</span><span class="gate-state st-pass">proceed</span><span class="g-meta">unbounded · 5 risks accepted</span></div>
-        <span class="conn">→</span>
-        <div class="gate"><span class="g-role">gate 2</span><span class="g-name">Plan</span><span class="gate-state st-pass">100 / healthy</span><span class="g-meta">5 dimensions 20/20</span></div>
-        <span class="conn">→</span>
-        <div class="gate codex"><span class="g-role">codex · gate 3</span><span class="g-name">Planning review</span><span class="gate-state st-pass">approved</span><span class="g-meta">changes required → revised</span></div>
-        <span class="conn">⇥</span>
-        <div class="gate"><span class="g-role">gate 4</span><span class="g-name">Implement + Prove</span><span class="gate-state st-pass">9 red → green</span><span class="g-meta">wired + live harnesses</span></div>
-        <span class="conn">→</span>
-        <div class="gate codex"><span class="g-role">codex · gate 5</span><span class="g-name">Code review</span><span class="gate-state st-fail">R1 failed → R2 pass</span><span class="g-meta">4 findings · 2 survived R1</span></div>
-        <span class="conn">→</span>
-        <div class="gate"><span class="g-role">gate 6</span><span class="g-name">Ship</span><span class="gate-state st-pass">9 / 9 verified</span><span class="g-meta">0 waived</span></div>
-      </div>
+    <p class="eyebrow">The real app · live over WebSocket</p>
+    <h1 class="view-h" style="font-size:clamp(1.6rem,3vw,2.2rem)">One feature, taken all the way — for real</h1>
+    <p class="view-sub">The actual tool, live. A single feature — <em>“design and send a marketing email”</em> — that an AI built, a second AI reviewed, and every requirement passed a test that really ran. Every node is green; it's ready to ship. Zoom, pan, click a node to see what it recorded.</p>
+    <div class="graph-frame">
+      <iframe src="https://acfs-dev.tail063234.ts.net:8448/" title="Live loopbreaker review graph — MKTG-EMAIL-1" loading="lazy"></iframe>
     </div>
-
-    <div class="grid">
-      <div class="card">
-        <h3>Discovery — what the human chose <span class="tick">8 answers</span></h3>
-        <ul class="kv">
-          <li><span class="k">who</span><span class="v"><b>internal operator tool</b> — one operator, occasional announcements</span></li>
-          <li><span class="k">appetite</span><span class="v"><b>unbounded</b> — "whatever it takes", risk accepted</span></li>
-          <li><span class="k">slice</span><span class="v">compose → send for real → record</span></li>
-          <li><span class="k">compliance</span><span class="v">unsubscribe + suppression + footer, <b>from day one</b></span></li>
-          <li><span class="k">owner</span><span class="v">ben@rordi.ai owns go / no-go</span></li>
-        </ul>
-        <p class="snip-label" style="margin-top:14px">Selected OUT — non-goals</p>
-        <div class="chips">
-          <span class="chip no">scheduling / send-later</span>
-          <span class="chip no">saved lists &amp; segments</span>
-          <span class="chip no">open / click analytics</span>
-          <span class="chip ok">template library — kept IN</span>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>The frozen acceptance surface <span class="tick">9 enforced behaviors</span></h3>
-        <ul class="kv" style="gap:7px">
-          <li><span class="k">B1</span><span class="v">compose → a real message is accepted by the provider</span></li>
-          <li><span class="k">B2</span><span class="v">every message carries postal address + its own unsub token</span></li>
-          <li><span class="k">B3</span><span class="v">unsubscribe is deliberate; survives key rotation</span></li>
-          <li><span class="k">B4</span><span class="v">suppressed addresses excluded; rest still send</span></li>
-          <li><span class="k">B5</span><span class="v">recipient outside allowlist rejected before provider</span></li>
-          <li><span class="k">B6</span><span class="v">every attempt leaves an auditable record</span></li>
-          <li><span class="k">B7</span><span class="v">disabled send path fails loudly, never silent</span></li>
-          <li><span class="k">B8</span><span class="v">templates give a compliant starting draft</span></li>
-          <li><span class="k">B9</span><span class="v">only the authed operator sends / reads history</span></li>
-        </ul>
-      </div>
-
-      <div class="card span2">
-        <h3>Code review — the gate did not rubber-stamp <span class="tick">the strongest moment</span></h3>
-        <p>Round 1 spent its full three-pass budget and <span style="color:var(--warn)">failed</span>. Two findings were repaired and re-verified; two survived and became the work list. A human opened round 2, whose comprehensive pass confirmed the repairs.</p>
-        <div class="rounds">
-          <div class="round">
-            <div class="rhead"><span style="color:var(--warn)">●</span> Round 1 — budget spent, round ends</div>
-            <div class="passes">
-              <span class="pass f">comprehensive · fail</span>
-              <span class="pass f">repair-verification · fail</span>
-              <span class="pass f">decision · fail</span>
-            </div>
-          </div>
-          <div class="round">
-            <div class="rhead"><span style="color:var(--good)">●</span> Round 2 — opened by ben@rordi.ai, a named human act</div>
-            <div class="passes"><span class="pass p">comprehensive · pass</span></div>
-          </div>
-        </div>
-        <ul class="findings">
-          <li class="finding"><span class="sev">P1</span><span class="ftxt"><span class="fid">R1-AUTH-ROUTE</span><br>Composer route not refused server-side for unauthenticated requests</span><span class="verdict repaired">repaired ✓</span></li>
-          <li class="finding"><span class="sev">P1</span><span class="ftxt"><span class="fid">R1-STALE-HARNESS</span><br>Registered harnesses could pass against a stale product build</span><span class="verdict repaired">repaired ✓</span></li>
-          <li class="finding"><span class="sev">P1</span><span class="ftxt"><span class="fid">R1-AUDIT-PAYLOAD</span><br>Migration gap drops all but the first recipient's audited payload</span><span class="verdict survived">survived R1</span></li>
-          <li class="finding"><span class="sev">P1</span><span class="ftxt"><span class="fid">R1-AUDIT-RECOVERY</span><br>A store-wide outage loses the reconcilable audit record after accept</span><span class="verdict survived">survived R1</span></li>
-        </ul>
-        <p style="margin-top:14px"><b style="color:var(--fg)">Both survivors are audit/durability bugs Arm A cannot reach</b> — its store is in-memory mock data, so there is no migration path and no durable row to lose.</p>
-      </div>
-    </div>
+    <p class="hint">Live from the loopbreaker app itself. If the frame is blank, the app process is down — relaunch it.</p>
   </section>
 
-  <!-- ================= VIEW 3 — COMPARE ================= -->
+  <!-- ================= 4 — WITH vs WITHOUT ================= -->
   <section data-view="compare">
-    <p class="eyebrow">Same model · same template · same one line</p>
-    <h1 class="view-h">Raw agent vs the loopbreaker harness on top</h1>
-    <p class="view-sub">Both arms got the exact same prompt and the same starting repo. The only variable is the gate structure. Here is what each one did with it.</p>
+    <p class="eyebrow">Same AI model · same starting code</p>
+    <h1 class="view-h">The same AI, with and without the process</h1>
+    <p class="view-sub">Both runs got the exact same one-line request and the same repo. The only difference is whether this quality process was switched on.</p>
 
+    <div class="shared-input">
+      <span class="si-label">The request — given to both, in full</span>
+      <span class="si-text">“Add a way to design and send a marketing email from the dashboard.”</span>
+    </div>
+
+    <div class="expand-row">
+      <div class="expand-col without">
+        <p class="snip-label">Without — it just runs with the one line</p>
+        <p class="expand-note">The AI guessed the scope and started building a full marketing-<b>campaigns</b> tool — saved segments, an “avg open rate” dashboard — <b>none of it asked for</b> (analytics was later confirmed a non-goal).</p>
+      </div>
+      <div class="expand-col with">
+        <p class="snip-label">With — a short interview expands the one line first</p>
+        <ul class="qa">
+          <li><span class="q">Who is this for?</span><span class="a">an internal operator sending occasional announcements</span></li>
+          <li><span class="q">What are we deliberately NOT doing?</span><span class="a">no scheduling, no saved segments, no open/click analytics</span></li>
+          <li><span class="q">Compliance?</span><span class="a">unsubscribe + suppression list + address footer, from day one</span></li>
+        </ul>
+        <p class="expand-note">One line becomes a scoped goal a person signed off on. <b>That</b> is what gets built — and what the review checks against.</p>
+      </div>
+    </div>
+
+    <p class="snip-label section-label">Then — the code each one actually shipped</p>
     <div class="compare">
       <div class="armcol">
         <div class="armhead a">
-          <div class="tagline">ARM A · raw Claude Code</div>
-          <h3>No structure</h3>
-          <div class="who">Prompt, in full:</div>
+          <div class="tagline">WITHOUT — raw AI</div>
+          <h3>Mock data, sending off by default</h3>
         </div>
-        <pre><span class="cm"># the entire input</span>
-"Add a way to design and send a
- marketing email from the dashboard."
-
-<span class="cm"># → ran immediately. invented scope:</span>
-<span class="cm">#   campaigns, segments, avg open rate</span>
-<span class="cm">#   (analytics was an explicit non-goal)</span></pre>
-        <div>
-          <p class="snip-label">What it built</p>
-          <pre><span class="cm">// service.ts — the "audit" layer</span>
-import { fakeCampaigns } from
-  '@/constants/<span class="warnt">mock-api-campaigns</span>';
-
-<span class="cm">// resend.server.ts</span>
-<span class="cm">/** Campaign (bulk) sends stay
-    <span class="warnt">simulated</span> unless explicitly
-    turned on. */</span></pre>
-        </div>
+        <pre><span class="cm">// service.ts — "send a campaign"</span>
+<span class="kw">export async function</span> sendCampaign(values, id) {
+  <span class="cm">// recipients come from fake in-memory data</span>
+  <span class="kw">const</span> to = <span class="kw">await</span> <span class="warnt">fakeCampaigns</span>.getAudienceEmails(…)
+  <span class="kw">const</span> res = <span class="kw">await</span> sendEmails({ to })   <span class="cm">// simulated</span>
+  <span class="kw">return</span> <span class="warnt">fakeCampaigns</span>.recordSend(values, id) <span class="cm">// mock "audit"</span>
+}
+<span class="cm">// no allowlist. no auth. no unsubscribe. no test.</span></pre>
         <div class="card" style="background:var(--panel2)">
           <ul class="kv" style="gap:7px">
             <li><span class="k">tests</span><span class="v"><b style="color:var(--warn)">0</b> — none, anywhere</span></li>
-            <li><span class="k">sign-off</span><span class="v">"Resend is hooked up and <b>verified end to end</b>"</span></li>
-            <li><span class="k">review</span><span class="v">none — self-declared done</span></li>
+            <li><span class="k">it said</span><span class="v">“hooked up and <b>verified end to end</b>”</span></li>
+            <li><span class="k">checked by</span><span class="v">no one — declared itself done</span></li>
           </ul>
         </div>
       </div>
 
       <div class="armcol">
         <div class="armhead b">
-          <div class="tagline">ARM B · loopbreaker harness</div>
-          <h3>Full pipeline</h3>
-          <div class="who">Same prompt → a discovery interview elicited it, a human ratified it:</div>
+          <div class="tagline">WITH — same AI, this process</div>
+          <h3>Real send, audited and guarded</h3>
         </div>
-        <pre><span class="cm"># same one line, then the gate asked:</span>
-Q: Who is this for?
-A: <span class="goodt">internal operator tool</span>
-
-Q: What are we NOT doing?
-A: <span class="goodt">scheduling · segments · analytics</span>
-
-<span class="cm"># premise APPROVED by Ben Freed</span></pre>
-        <div>
-          <p class="snip-label">What it built (a proof, not a claim)</p>
-          <pre><span class="cm">// test/wired/mktg-email-1-b5.test.ts</span>
-<span class="kw">it</span>('rejects the send by name and
-    never reaches the provider', <span class="kw">async</span> () => {
-  <span class="kw">await expect</span>(sendMarketingEmail(
-    { recipients: [ALLOWED_A, <span class="goodt">OUTSIDER</span>] }, …))
-    .rejects…
-  <span class="kw">expect</span>(transport.sent).<span class="goodt">toHaveLength(0)</span>
-})</pre>
-        </div>
+        <pre><span class="cm">// send-service.ts — send for real, audited</span>
+<span class="kw">export async function</span> sendMarketingEmail(req, ctx) {
+  <span class="kw">const</span> id = store.<span class="goodt">beginAttempt</span>({ actor: operator })  <span class="cm">// audit row FIRST</span>
+  assertValidDraft(subject, body, recipients)
+  <span class="goodt">assertAllowlisted</span>(recipients, config)      <span class="cm">// reject before provider</span>
+  <span class="kw">if</span> (!config.sendEnabled) <span class="kw">throw</span> …            <span class="cm">// fails loud, never silent</span>
+  <span class="kw">for</span> (<span class="kw">const</span> msg <span class="kw">of</span> rendered)                  <span class="cm">// one per recipient,</span>
+    <span class="kw">await</span> transport.send(msg)                  <span class="cm">//   own unsubscribe token</span>
+  store.<span class="goodt">resolveAttempt</span>(id, { … })              <span class="cm">// durable outcome</span>
+}</pre>
         <div class="card" style="background:var(--panel2)">
           <ul class="kv" style="gap:7px">
-            <li><span class="k">tests</span><span class="v"><b style="color:var(--good)">9</b> behaviors, proven red → green</span></li>
-            <li><span class="k">sign-off</span><span class="v">exit codes — <b>prove B5</b> pass in 5.4s</span></li>
-            <li><span class="k">review</span><span class="v">Codex, bounded — found 4 real bugs</span></li>
+            <li><span class="k">tests</span><span class="v"><b style="color:var(--good)">9</b> — each one actually run</span></li>
+            <li><span class="k">it said</span><span class="v">nothing — a <b>test passed in 5.4s</b></span></li>
+            <li><span class="k">checked by</span><span class="v">a 2nd AI — found <b>4 real bugs</b></span></li>
           </ul>
         </div>
       </div>
@@ -462,22 +393,22 @@ A: <span class="goodt">scheduling · segments · analytics</span>
 
     <div class="scorecard">
       <table>
-        <thead><tr><th>&nbsp;</th><th>Arm A — raw</th><th>Arm B — loopbreaker</th></tr></thead>
+        <thead><tr><th>&nbsp;</th><th>Without the process</th><th>With it</th></tr></thead>
         <tbody>
-          <tr><td>premise</td><td><span class="a">self-invented (campaigns + analytics)</span></td><td><span class="b">human-ratified from a discovery interview</span></td></tr>
-          <tr><td>data / audit</td><td><span class="a">in-memory mock store</span></td><td><span class="b">real store; record written before any guard</span></td></tr>
-          <tr><td>real send</td><td><span class="a">simulated by default</span></td><td><span class="b">real; per-recipient unsubscribe tokens</span></td></tr>
-          <tr><td>proof</td><td><span class="a">0 tests; "verified" = eyeballed config</span></td><td><span class="b">9 behaviors, executed red → green</span></td></tr>
-          <tr><td>review</td><td><span class="a">none — self-declared done</span></td><td><span class="b">bounded round failed on 2 audit bugs → round 2 → ship</span></td></tr>
+          <tr><td>the goal</td><td><span class="a">guessed — campaigns + analytics, not asked for</span></td><td><span class="b">pinned down with a person first</span></td></tr>
+          <tr><td>its data</td><td><span class="a">fake, in-memory</span></td><td><span class="b">a real record, saved before anything sends</span></td></tr>
+          <tr><td>sending</td><td><span class="a">simulated by default</span></td><td><span class="b">real, one message per recipient</span></td></tr>
+          <tr><td>tested?</td><td><span class="a">no tests at all</span></td><td><span class="b">9 requirements, each with a test that runs</span></td></tr>
+          <tr><td>reviewed?</td><td><span class="a">no one — said “done”</span></td><td><span class="b">a 2nd AI; it failed a round, caught 2 bugs the raw run can't even hit</span></td></tr>
         </tbody>
       </table>
     </div>
 
     <div class="callout">
-      <p class="big">Not a smarter agent. A bounded one — over a contract that came from outside the loop.</p>
-      <p style="color:var(--muted);margin-top:8px">Arm A wasn't lazy: it wired real Resend and labelled its states. It was <em>unbounded and unverified</em>. That's the whole difference.</p>
+      <p class="big">Same AI. The difference isn't intelligence — it's whether anyone made sure the work was right.</p>
+      <p style="color:var(--muted);margin-top:8px">The raw run wasn't lazy: it wired real sending and labelled its states. It just built the wrong thing and never checked that it worked.</p>
     </div>
-    <p class="foot">github.com/rordi-ai/loopbreaker · substrate: MKTG-EMAIL-1 · both arms from one clone of tanstack-start-dashboard</p>
+    <p class="foot">github.com/rordi-ai/loopbreaker · one feature, MKTG-EMAIL-1 · both runs from the same clone of tanstack-start-dashboard</p>
   </section>
 
 </main>
@@ -496,7 +427,7 @@ A: <span class="goodt">scheduling · segments · analytics</span>
     btns.forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.go); }); });
     addEventListener('keydown', function (e) {
       if (e.key >= '1' && e.key <= '4') { show(order[+e.key - 1]); return; }
-      var cur = order.indexOf((location.hash.slice(1) || 'system'));
+      var cur = order.indexOf(location.hash.slice(1) || 'pipeline');
       if (cur < 0) cur = 0;
       if (e.key === 'ArrowRight') show(order[Math.min(order.length - 1, cur + 1)]);
       if (e.key === 'ArrowLeft') show(order[Math.max(0, cur - 1)]);
