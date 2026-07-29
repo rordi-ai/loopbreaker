@@ -13,6 +13,19 @@ export type WorkflowNodeData = Record<string, unknown> & {
 
 export type WorkflowNode = Node<WorkflowNodeData, "workflow">;
 
+/** Human-readable type label per node kind, shown as a badge so each node says what it is. */
+const KIND_LABEL: Record<WorkflowNodeData["kind"], string> = {
+  issue: "issue",
+  shape: "shape",
+  planning: "plan",
+  "planning-review": "plan review",
+  behavior: "behavior",
+  evidence: "proof",
+  finding: "finding",
+  pass: "review pass",
+  decision: "ship decision",
+};
+
 export function WorkflowNodeCard({ data, selected }: NodeProps<WorkflowNode>) {
   return (
     <>
@@ -21,6 +34,7 @@ export function WorkflowNodeCard({ data, selected }: NodeProps<WorkflowNode>) {
         {data.handles.source ? <Handle className="node-handle" position={Position.Right} type="source" /> : null}
         <header className="node-header">
           <div>
+            <span className={`node-kind kind-${data.kind}`}>{KIND_LABEL[data.kind] ?? data.kind}</span>
             <span className="node-eyebrow">{data.eyebrow}</span>
             <h3>{data.title}</h3>
           </div>

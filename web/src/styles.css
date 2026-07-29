@@ -90,7 +90,8 @@ button:hover { border-color: var(--blue); background: var(--blue-soft); transfor
 .app-shell.embed .canvas-frame { height: 100dvh; min-height: 100dvh; border-radius: 0; border: 0; }
 
 .node-header h3 { margin: 3px 0 0; font-size: 14px; line-height: 1.35; letter-spacing: -.015em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.node-eyebrow { color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.node-kind { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--blue); background: var(--blue-soft); border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent); border-radius: 5px; padding: 2px 8px; margin-bottom: 7px; }
+.node-eyebrow { display: block; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .node-status { flex: 0 0 auto; border: 1px solid currentColor; border-radius: 999px; padding: 3px 6px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
 .node-status.tone-green { color: var(--green); }
 .node-status.tone-red { color: var(--red); }
