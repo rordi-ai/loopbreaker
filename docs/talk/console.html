@@ -275,10 +275,10 @@
     <div class="flowline">
       <div class="stg" data-n="▸">
         <h3>It starts with a prompt <span class="who">one session</span></h3>
-        <p class="what">The whole thing is a single agent session &mdash; nothing is wired up by hand. The instant the session opens, a hook orients the agent to what it's working on.</p>
+        <p class="what">The whole run is a single agent session &mdash; nothing is wired up by hand. Left alone, an agent with every tool loaded just starts coding and never touches loopbreaker at all (observed directly). One hook fixes that, and it's not magic: at session start it prepends a block of <b>plain instructions</b> to the agent's context &mdash; run the ordered pipeline, here are the CLI commands and MCP tools, don't invent the premise. Once an issue is linked, that same block also states the active issue and the exact gate it's on. Simple, and advisory &mdash; but without it the pipeline is invisible.</p>
         <div class="map">
           <span class="m"><span class="mk">hook</span><span class="mv hook">SessionStart &rarr; prime</span></span>
-          <span class="m"><span class="mk">does</span><span class="mv">names the active issue + the gate it's behind</span></span>
+          <span class="m"><span class="mk">injects</span><span class="mv">the pipeline + which tools to use, as session context</span></span>
         </div>
       </div>
 
@@ -296,17 +296,17 @@
         <p class="what">The premise waits in the app's <b>&ldquo;Needs you&rdquo;</b> inbox, showing every question and answer. A person reads them and approves &mdash; with their name. This is <b>absent from the agent's tools by design</b>: there is no call it can make to sign off its own goal. Approval releases the next gate.</p>
         <div class="map">
           <span class="m"><span class="mk">surface</span><span class="mv">the app &mdash; &ldquo;Needs you&rdquo; / inbox</span></span>
-          <span class="m"><span class="mk">tool</span><span class="mv none">none &mdash; no MCP equivalent exists</span></span>
+          <span class="m"><span class="mk">tool</span><span class="mv none">no loopbreaker call for this &mdash; only the app</span></span>
         </div>
       </div>
 
       <div class="stg" data-n="3">
         <h3>Shape &amp; plan &mdash; the bet, then the contract</h3>
-        <p class="what">The agent frames a bounded bet, then writes the <b>behavior contract</b> &mdash; the enforced requirements &mdash; and a <b>proof plan</b> for how each one is tested. Those requirements then freeze. Code still can't be touched: the admission hook refuses every source edit until a review admits the build.</p>
+        <p class="what">The agent frames a bounded bet, then writes the <b>behavior contract</b> &mdash; the enforced requirements &mdash; and a <b>proof plan</b> for how each one is tested. Those requirements then freeze. Source edits are still blocked here, and that's the second hook: it runs on every Edit/Write and returns <b>deny</b> while the issue is unadmitted &mdash; the denial message it returns is the exact active gate, so the agent reads what to do next. Shell commands and file reads pass straight through.</p>
         <div class="map">
           <span class="m"><span class="mk">skills</span><span class="mv">shape-strategy &middot; plan-feature</span></span>
           <span class="m"><span class="mk">writes</span><span class="mv">shape_record &middot; planning_record</span></span>
-          <span class="m"><span class="mk">hook</span><span class="mv hook">PreToolUse &rarr; admission (edits still refused)</span></span>
+          <span class="m"><span class="mk">hook</span><span class="mv hook">PreToolUse &rarr; admission &mdash; denies edits, reply is the active gate</span></span>
         </div>
       </div>
 
@@ -326,7 +326,7 @@
         <div class="map">
           <span class="m"><span class="mk">skills</span><span class="mv">implement-feature &middot; orchestrate-delivery</span></span>
           <span class="m"><span class="mk">runs</span><span class="mv">loopbreaker prove &middot; bind</span></span>
-          <span class="m"><span class="mk">hook</span><span class="mv hook">PreToolUse now permits edits</span></span>
+          <span class="m"><span class="mk">hook</span><span class="mv hook">PreToolUse now allows edits &mdash; issue admitted</span></span>
         </div>
       </div>
 
