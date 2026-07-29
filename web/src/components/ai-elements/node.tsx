@@ -36,7 +36,7 @@ export function WorkflowNodeCard({ data, selected }: NodeProps<WorkflowNode>) {
           <div>
             <span className={`node-kind kind-${data.kind}`}>{KIND_LABEL[data.kind] ?? data.kind}</span>
             <span className="node-eyebrow">{data.eyebrow}</span>
-            <h3>{data.title}</h3>
+            <h3 title={data.title}>{data.title}</h3>
           </div>
           <span className={`node-status tone-${data.tone}`}>{data.status}</span>
         </header>
@@ -45,12 +45,12 @@ export function WorkflowNodeCard({ data, selected }: NodeProps<WorkflowNode>) {
             {data.lines.map((line) => (
               <div className="node-line" key={`${line.label}:${line.value}`}>
                 <span>{line.label}</span>
-                <p>{line.value}</p>
+                <p title={line.value}>{line.value}</p>
               </div>
             ))}
           </div>
         ) : null}
-        {data.footer ? <footer className="node-footer">{data.footer}</footer> : null}
+        {data.footer ? <footer className="node-footer" title={data.footer}>{data.footer}</footer> : null}
       </article>
       <NodeToolbar className="node-toolbar" isVisible={selected} position={Position.Bottom}>
         Read-only · source of truth: SQLite
