@@ -96,16 +96,27 @@ Per the domain rule, exhausting the budget **ends the round, not the issue**. Th
 became the work-list. `ben@rordi.ai` repaired them (commit `dc97821`) and opened **round 2**
 (07-28 18:00) — a named, reasoned, on-the-record human act.
 
-### Round 2 is not complete
+### Round 2 passed — and it took an independent, executed review to earn it
 
-Round 2 has **0 passes recorded**. The repairs are in; the independent comprehensive pass that
-would verify them has not run. This is exactly where the run stopped — the loop is broken, not
-looping and not silently shipped.
+Round 2's comprehensive pass is **PASS** (substrate `tsd-probe` @ `6d7f7ab`), and the issue reached
+`ship` — "Every enforced behavior is verified," 9/9, 0 waived. But note *how* it passed, because
+that is the whole point:
 
-The point worth landing: **both surviving P1s are audit/durability bugs — a migration gap and an
+- An **independent** reviewer (no memory of building the repairs) re-judged both P1s against their
+  recorded bars and hunted for new ones.
+- Both repairs were confirmed on **red-first, executed** evidence, not assertion. AUDIT-PAYLOAD:
+  a `PRAGMA`-guarded idempotent migration; with `migrate()` removed the test fails
+  `no such column: body_html` and passes with the fix. AUDIT-RECOVERY: accepted provider ids
+  persist to a `.unrecorded.jsonl` sidecar when every post-provider DB write fails; neuter the sink
+  and the test fails `must leave a durable record somewhere`.
+- Full wired suite 34/34, `prove B6` pass, no new P1. Two non-blocking sub-P1 notes recorded (the
+  sidecar shares the DB filesystem — a pre-send outbox would be stronger).
+
+The point worth landing: **both surviving P1s were audit/durability bugs — a migration gap and an
 outage-reconciliation gap — that a self-certifying agent would never surface.** Arm A literally
 cannot hit them: its store is `fakeCampaigns` in-memory mock data, so there is no migration path and
-no durable row to lose.
+no durable row to lose. It took two bounded rounds and an independent executed review for the arm
+that was actually trying to reach a defensible ship.
 
 ---
 
@@ -117,17 +128,22 @@ no durable row to lose.
 | Data / audit | `fakeCampaigns`, in-memory | Real store; attempt record written **before** any guard |
 | Real send | Simulated by default | Real, per-recipient unsubscribe tokens |
 | Proof | 0 tests; "verified" = eyeballed config | 9 enforced behaviors verified on **executed red→green** proofs |
-| Review outcome | Self-declared done | Bounded round 1 failed (2 durability P1s) → round 2 opened, pending |
+| Review outcome | Self-declared done | Round 1 failed its 3-pass budget (2 durability P1s) → round 2 opened, independent review PASS → `ship` |
 
 ---
 
 ## What is still needed for a clean, defensible comparison
 
-1. **Pre-registered acceptance criteria**, written by the founder and held aside *before* scoring —
-   not yet on disk. Without it Arm B risks being graded against its own interview answers.
-2. **Finish Arm B round 2** — run the comprehensive pass over the two audit repairs.
-3. **Run Arm A cold** as a clean session against the pre-registered criteria (the current Arm A is a
-   real run, but was not scored against held-aside criteria).
+1. **Ratify the acceptance criteria** in [acceptance-criteria.md](acceptance-criteria.md) — the
+   founder confirms/edits the A1–A9 list, then it is frozen. Derived from the pre-run premise, but
+   formalized after the runs (stated honestly in that file).
+2. ~~**Finish Arm B round 2**~~ — **done.** Round 2 comprehensive pass = PASS; issue at `ship`
+   (`tsd-probe` @ `6d7f7ab`).
+3. **Score both arms** against the frozen criteria — fill the score sheet in acceptance-criteria.md
+   (present + proven per criterion). Both existing runs are real; grade them, don't redo them.
 4. **Discrimination-rate instrument** — for each arm, revert the feature impl and run *that arm's
    own* tests. Every test that stays green is vacuous. Arm A's rate is trivially undefined (no
    tests); Arm B's is ~1.0 by construction (red baselines recorded). Capture tokens + wall-clock too.
+5. *(Optional)* **Run Arm B cold** only if you want clean from-cold token/wall-clock headline
+   numbers — additive, not a fix. The gates the probe ran on are current HEAD (verified), so this is
+   not needed for validity.
