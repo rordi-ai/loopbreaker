@@ -109,7 +109,7 @@
   .gate.codex { border-style: dashed; }
 
   /* ---- detail grid ---- */
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 30px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 30px; align-items: start; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
   .card.span2 { grid-column: span 2; }
   @media (max-width: 720px) { .card.span2 { grid-column: span 1; } }
@@ -117,6 +117,13 @@
   .card h3 .tick { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); }
   .card p { color: var(--muted); margin: 8px 0 0; font-size: .96rem; }
   .card p.lead { color: var(--fg); }
+
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 38px; }
+  @media (max-width: 820px) { .tiles { grid-template-columns: 1fr; } }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px 22px; }
+  .tile .t-tag { font-family: var(--font-mono); font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+  .tile h3 { font-size: 1.16rem; margin: 12px 0 9px; }
+  .tile p { color: var(--muted); font-size: .95rem; margin: 0; max-width: 34ch; }
 
   .kv { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
   .kv li { display: grid; grid-template-columns: 128px 1fr; gap: 12px; align-items: baseline; }
@@ -191,20 +198,21 @@
       <span class="tag">bounded review over a contract from outside the loop</span>
     </div>
     <nav aria-label="Views">
-      <button data-go="system" aria-current="true"><span class="n">1</span> System</button>
-      <button data-go="run"><span class="n">2</span> The run</button>
-      <button data-go="compare"><span class="n">3</span> Arm A vs Arm B</button>
+      <button data-go="pipeline" aria-current="true"><span class="n">1</span> Pipeline</button>
+      <button data-go="internals"><span class="n">2</span> Internals</button>
+      <button data-go="run"><span class="n">3</span> The run</button>
+      <button data-go="compare"><span class="n">4</span> Arm A vs Arm B</button>
     </nav>
   </div>
 </header>
 
 <main class="wrap">
 
-  <!-- ================= VIEW 1 — SYSTEM ================= -->
-  <section data-view="system" class="active">
-    <p class="eyebrow">The harness · hooks · skills · gates</p>
-    <h1 class="view-h">One pipeline, six ordered gates, two things an agent cannot fake</h1>
-    <p class="view-sub">Every source edit is refused until an issue clears the gates in order. The premise comes from a human; the proof comes from an exit code. Nothing between the two grades its own work.</p>
+  <!-- ================= VIEW 1 — PIPELINE ================= -->
+  <section data-view="pipeline" class="active">
+    <p class="eyebrow">The pipeline</p>
+    <h1 class="view-h">Six ordered gates. Two things an agent can't fake.</h1>
+    <p class="view-sub">No source edit is allowed until an issue clears the gates in order — the premise comes from a human, the proof comes from an exit code.</p>
 
     <div class="spine-scroll">
       <div class="spine">
@@ -223,57 +231,70 @@
         <div class="gate"><span class="g-role">gate 6</span><span class="g-name">Ship</span><span class="gate-state st-info">every behavior verified</span><span class="g-meta">separate fact from review</span></div>
       </div>
     </div>
-    <p class="hint">⇥ = admission. No worker starts before it. Dashed nodes run on a different vendor (Codex CLI) so review is structurally independent, not promised.</p>
+    <p class="hint">⇥ admission — no work starts before it. Dashed nodes run on a different vendor (Codex), so review is independent by construction.</p>
+
+    <div class="tiles">
+      <div class="tile"><span class="t-tag">in</span><h3>Premise from a human</h3><p>Gate 0 — a person ratifies what the change is for. The one input a code reviewer never gets.</p></div>
+      <div class="tile"><span class="t-tag">between</span><h3>Bounded review</h3><p>Three passes, then the round ends. No pass four. The loop can't run forever.</p></div>
+      <div class="tile"><span class="t-tag">out</span><h3>Proof from an exit code</h3><p>A behavior is verified only when a harness loopbreaker ran itself exits 0. Claims don't count.</p></div>
+    </div>
+  </section>
+
+  <!-- ================= VIEW 2 — INTERNALS ================= -->
+  <section data-view="internals">
+    <p class="eyebrow">Under the hood</p>
+    <h1 class="view-h">What turns the flow into a wall</h1>
+    <p class="view-sub">Six small mechanisms. Together they mean no context ever grades its own work.</p>
 
     <div class="grid">
       <div class="card">
-        <h3>Two hooks make it load-bearing <span class="tick">src/hooks.ts</span></h3>
+        <h3>Two hooks <span class="tick">src/hooks.ts</span></h3>
         <ul class="kv">
-          <li><span class="k">SessionStart</span><span class="v"><b>prime</b> — binds the active issue and states the gate the agent is behind. Unlinked, the plugin is inert.</span></li>
-          <li><span class="k">PreToolUse</span><span class="v"><b>admission</b> — <span style="color:var(--warn)">denies</span> every source edit until shape ✓ planning ✓ independent planning-review ✓, in that order. Bash and reads pass.</span></li>
+          <li><span class="k">SessionStart</span><span class="v"><b>prime</b> — binds the active issue.</span></li>
+          <li><span class="k">PreToolUse</span><span class="v"><b>admission</b> — <span style="color:var(--warn)">denies</span> source edits until the gates pass.</span></li>
         </ul>
-        <p>The gate isn't advice the agent may follow. It's a wall in front of the editor.</p>
+        <p>A wall in front of the editor, not advice.</p>
       </div>
 
       <div class="card">
-        <h3>Seven skills, one per role</h3>
+        <h3>Seven skills</h3>
         <div class="chips">
           <span class="chip">discovery-interview</span><span class="chip">shape-strategy</span>
           <span class="chip">plan-feature</span><span class="chip hl">review-planning</span>
           <span class="chip">implement-feature</span><span class="chip hl">review-invariants</span>
           <span class="chip">orchestrate-delivery</span>
         </div>
-        <p>Highlighted two are the reviewers. They inspect and record only — they never edit the shape, contract, or plan they are judging.</p>
+        <p>The two highlighted are reviewers — they inspect and record, never edit.</p>
       </div>
 
       <div class="card">
-        <h3>Evidence is executed, never asserted</h3>
-        <p class="lead"><code>loopbreaker prove BEHAVIOR</code> runs the registered harness and writes the row itself. The verdict is the harness exit code.</p>
+        <h3>Executed evidence</h3>
+        <p class="lead"><code>prove</code> runs the harness; the verdict is its exit code.</p>
         <ul class="kv">
-          <li><span class="k">not_run</span><span class="v">fail-closed default — failing to observe a pass is never a pass.</span></li>
-          <li><span class="k">red-first</span><span class="v">a harness must fail against HEAD before the work exists, or it proves nothing.</span></li>
+          <li><span class="k">not_run</span><span class="v">fail-closed default.</span></li>
+          <li><span class="k">red-first</span><span class="v">must fail before the work exists.</span></li>
         </ul>
       </div>
 
       <div class="card">
-        <h3>Two-way harness binding</h3>
+        <h3>Two-way binding</h3>
         <ul class="kv">
-          <li><span class="k">behavior</span><span class="v">names its harness — data, cheap, revocable.</span></li>
-          <li><span class="k">harness</span><span class="v">names the behavior back in <code>proves</code> — reviewed code, visible in a diff.</span></li>
+          <li><span class="k">behavior</span><span class="v">names its harness.</span></li>
+          <li><span class="k">harness</span><span class="v">names the behavior back, in a diff.</span></li>
         </ul>
-        <p>Neither half alone counts, so an agent can't quietly point a behavior at a test that cannot fail.</p>
+        <p>Neither half alone counts.</p>
       </div>
 
       <div class="card">
-        <h3>Bounded passes end the loop</h3>
-        <p class="lead">Planning review and code review each get <b>comprehensive → repair-verification → decision</b>. There is no pass four.</p>
-        <p>A round that spends its budget ends the <em>round</em>, not the issue — the open findings become the work list, and re-opening a round is a named human act on the record.</p>
+        <h3>Bounded passes</h3>
+        <p class="lead">comprehensive → repair → decision. No pass four.</p>
+        <p>A spent round ends the round, not the issue — reopening is a named human act.</p>
       </div>
 
-      <div class="card codex-note">
-        <h3>The reviewer is a different vendor</h3>
-        <p class="lead">Planning review and code review run on the <b>Codex CLI</b>, injected with the loopbreaker MCP server, recording its own passes and findings.</p>
-        <p>Independence isn't a second Claude prompt told to be skeptical — it's a different model family that never saw the build.</p>
+      <div class="card">
+        <h3>Different-vendor reviewer</h3>
+        <p class="lead">Review runs on the <b>Codex CLI</b>, over MCP.</p>
+        <p>Independence is structural — a model family that never saw the build.</p>
       </div>
     </div>
   </section>
@@ -465,7 +486,7 @@ A: <span class="goodt">scheduling · segments · analytics</span>
   (function () {
     var views = Array.prototype.slice.call(document.querySelectorAll('section[data-view]'));
     var btns = Array.prototype.slice.call(document.querySelectorAll('nav button'));
-    var order = ['system', 'run', 'compare'];
+    var order = ['pipeline', 'internals', 'run', 'compare'];
     function show(name) {
       views.forEach(function (v) { v.classList.toggle('active', v.dataset.view === name); });
       btns.forEach(function (b) { b.setAttribute('aria-current', b.dataset.go === name ? 'true' : 'false'); });
@@ -474,7 +495,7 @@ A: <span class="goodt">scheduling · segments · analytics</span>
     }
     btns.forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.go); }); });
     addEventListener('keydown', function (e) {
-      if (e.key === '1' || e.key === '2' || e.key === '3') { show(order[+e.key - 1]); return; }
+      if (e.key >= '1' && e.key <= '4') { show(order[+e.key - 1]); return; }
       var cur = order.indexOf((location.hash.slice(1) || 'system'));
       if (cur < 0) cur = 0;
       if (e.key === 'ArrowRight') show(order[Math.min(order.length - 1, cur + 1)]);
@@ -485,7 +506,7 @@ A: <span class="goodt">scheduling · segments · analytics</span>
       if (order.indexOf(h) >= 0) show(h);
     });
     var initial = location.hash.slice(1);
-    show(order.indexOf(initial) >= 0 ? initial : 'system');
+    show(order.indexOf(initial) >= 0 ? initial : 'pipeline');
   })();
 </script>
 </body>
