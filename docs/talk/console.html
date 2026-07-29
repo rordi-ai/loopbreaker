@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Loopbreaker — review console</title>
+<style>
+  html, body { min-height: 100%; }
+  img, svg { max-width: 100%; }
+  :root {
+    --bg: #0a0e13; --panel: #10161f; --panel2: #151d28;
+    --line: rgba(148,163,184,.16); --line2: rgba(148,163,184,.28);
+    --fg: #e7edf4; --muted: #8b9bab; --faint: #5b6a7d;
+    --accent: #7dd3fc; --accent-dim: #2b4d63;
+    --good: #86efac; --good-dim: #1f3a2a;
+    --warn: #fca5a5; --warn-dim: #3d2222;
+    --amber: #fcd34d;
+    --font-sans: ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --maxw: 1360px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f7fa; --panel: #ffffff; --panel2: #eef2f7;
+      --line: rgba(15,23,42,.12); --line2: rgba(15,23,42,.2);
+      --fg: #0f172a; --muted: #52627a; --faint: #7d8ba0;
+      --accent: #0369a1; --accent-dim: #bfe0f2;
+      --good: #15803d; --good-dim: #d6f0df;
+      --warn: #b91c1c; --warn-dim: #f6dcdc;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0e13; --panel: #10161f; --panel2: #151d28;
+    --line: rgba(148,163,184,.16); --line2: rgba(148,163,184,.28);
+    --fg: #e7edf4; --muted: #8b9bab; --faint: #5b6a7d;
+    --accent: #7dd3fc; --accent-dim: #2b4d63;
+    --good: #86efac; --good-dim: #1f3a2a; --warn: #fca5a5; --warn-dim: #3d2222;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa; --panel: #ffffff; --panel2: #eef2f7;
+    --line: rgba(15,23,42,.12); --line2: rgba(15,23,42,.2);
+    --fg: #0f172a; --muted: #52627a; --faint: #7d8ba0;
+    --accent: #0369a1; --accent-dim: #bfe0f2;
+    --good: #15803d; --good-dim: #d6f0df; --warn: #b91c1c; --warn-dim: #f6dcdc;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: var(--font-sans); font-size: 17px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(16px, 3vw, 40px); }
+  h1,h2,h3 { text-wrap: balance; margin: 0; letter-spacing: -.02em; }
+  code, pre, .mono, .chip, .gate-state, .kv b { font-family: var(--font-mono); }
+
+  /* ---- top bar ---- */
+  header {
+    position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
+  }
+  .bar { display: flex; align-items: center; gap: 24px; padding: 14px 0; flex-wrap: wrap; }
+  .brand { display: flex; align-items: baseline; gap: 12px; }
+  .brand .mark { font-family: var(--font-mono); font-weight: 700; font-size: 1.15rem; letter-spacing: -.03em; }
+  .brand .mark .b { color: var(--accent); }
+  .brand .tag { color: var(--muted); font-size: .82rem; }
+  nav { display: flex; gap: 6px; margin-left: auto; }
+  nav button {
+    font-family: var(--font-mono); font-size: .9rem; color: var(--muted);
+    background: transparent; border: 1px solid transparent; border-radius: 8px;
+    padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+    transition: color .15s, background .15s, border-color .15s;
+  }
+  nav button .n { color: var(--faint); font-size: .78rem; }
+  nav button:hover { color: var(--fg); background: var(--panel); }
+  nav button[aria-current="true"] { color: var(--fg); background: var(--panel2); border-color: var(--line2); }
+  nav button[aria-current="true"] .n { color: var(--accent); }
+  nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- view scaffolding ---- */
+  section[data-view] { display: none; padding: clamp(24px,4vh,44px) 0 80px; }
+  section[data-view].active { display: block; animation: fade .28s ease both; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { section[data-view].active { animation: none; } }
+
+  .eyebrow { font-family: var(--font-mono); font-size: .76rem; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+  .view-h { font-size: clamp(1.7rem, 3.4vw, 2.5rem); line-height: 1.05; }
+  .view-sub { color: var(--muted); max-width: 70ch; margin-top: 12px; font-size: 1.02rem; }
+
+  /* ---- gate spine ---- */
+  .spine-scroll { overflow-x: auto; padding: 8px 0 14px; margin-top: 26px; }
+  .spine { display: flex; align-items: stretch; gap: 0; min-width: min-content; }
+  .gate {
+    flex: 0 0 auto; width: 152px; background: var(--panel); border: 1px solid var(--line2);
+    border-radius: 12px; padding: 12px 13px; display: flex; flex-direction: column; gap: 7px;
+    position: relative;
+  }
+  .gate .g-role { font-family: var(--font-mono); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+  .gate .g-name { font-size: .98rem; font-weight: 600; line-height: 1.15; letter-spacing: -.01em; }
+  .gate .g-meta { font-family: var(--font-mono); font-size: .74rem; color: var(--muted); line-height: 1.35; margin-top: auto; }
+  .gate-state { font-size: .72rem; padding: 2px 7px; border-radius: 5px; align-self: flex-start; border: 1px solid; }
+  .st-pass { color: var(--good); border-color: var(--good-dim); background: color-mix(in srgb, var(--good) 12%, transparent); }
+  .st-fail { color: var(--warn); border-color: var(--warn-dim); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+  .st-info { color: var(--accent); border-color: var(--accent-dim); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .st-idle { color: var(--muted); border-color: var(--line2); }
+  .conn { flex: 0 0 auto; align-self: center; width: 20px; text-align: center; color: var(--faint); font-family: var(--font-mono); }
+  .gate.human { border-color: color-mix(in srgb, var(--amber) 55%, var(--line2)); }
+  .gate.human .g-role { color: var(--amber); }
+  .gate.codex { border-style: dashed; }
+
+  /* ---- detail grid ---- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 30px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card.span2 { grid-column: span 2; }
+  @media (max-width: 720px) { .card.span2 { grid-column: span 1; } }
+  .card h3 { font-size: 1.06rem; display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .card h3 .tick { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); }
+  .card p { color: var(--muted); margin: 8px 0 0; font-size: .96rem; }
+  .card p.lead { color: var(--fg); }
+
+  .kv { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+  .kv li { display: grid; grid-template-columns: 128px 1fr; gap: 12px; align-items: baseline; }
+  .kv .k { font-family: var(--font-mono); font-size: .74rem; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
+  .kv .v { font-size: .94rem; }
+  .kv b { color: var(--fg); font-weight: 600; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+  .chip { font-size: .78rem; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--line2); color: var(--muted); background: var(--panel2); }
+  .chip.ok { color: var(--good); border-color: var(--good-dim); }
+  .chip.no { color: var(--warn); border-color: var(--warn-dim); }
+  .chip.hl { color: var(--accent); border-color: var(--accent-dim); }
+
+  .findings { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .finding { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); }
+  .finding .sev { font-family: var(--font-mono); font-size: .74rem; color: var(--warn); padding-top: 1px; }
+  .finding .ftxt { font-size: .9rem; }
+  .finding .ftxt .fid { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); }
+  .finding .verdict { font-family: var(--font-mono); font-size: .72rem; white-space: nowrap; }
+  .verdict.repaired { color: var(--good); }
+  .verdict.survived { color: var(--warn); }
+
+  .rounds { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .round { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .round .rhead { display: flex; align-items: center; gap: 10px; padding: 9px 13px; background: var(--panel2); font-family: var(--font-mono); font-size: .82rem; }
+  .round .passes { display: flex; gap: 6px; padding: 10px 13px; flex-wrap: wrap; }
+  .pass { font-family: var(--font-mono); font-size: .72rem; padding: 3px 8px; border-radius: 5px; border: 1px solid; }
+  .pass.f { color: var(--warn); border-color: var(--warn-dim); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+  .pass.p { color: var(--good); border-color: var(--good-dim); background: color-mix(in srgb, var(--good) 10%, transparent); }
+
+  /* ---- compare view ---- */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 28px; align-items: start; }
+  @media (max-width: 860px) { .compare { grid-template-columns: 1fr; } }
+  .armcol { display: flex; flex-direction: column; gap: 16px; }
+  .armhead { border: 1px solid var(--line2); border-radius: 14px 14px 0 0; padding: 16px 20px; border-bottom: none; }
+  .armhead.a { background: color-mix(in srgb, var(--warn) 8%, var(--panel)); }
+  .armhead.b { background: color-mix(in srgb, var(--good) 8%, var(--panel)); }
+  .armhead .tagline { font-family: var(--font-mono); font-size: .78rem; color: var(--muted); }
+  .armhead h3 { font-size: 1.2rem; margin-top: 4px; }
+  .armhead .who { font-size: .9rem; color: var(--muted); margin-top: 6px; }
+  pre {
+    margin: 0; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; overflow-x: auto; font-size: .82rem; line-height: 1.6;
+  }
+  pre .cm { color: var(--faint); }
+  pre .warnt { color: var(--warn); }
+  pre .goodt { color: var(--good); }
+  pre .kw { color: var(--accent); }
+  .snip-label { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); margin: 0 0 7px; text-transform: uppercase; letter-spacing: .06em; }
+
+  .scorecard { margin-top: 26px; border: 1px solid var(--line2); border-radius: 14px; overflow: hidden; }
+  .scorecard table { border-collapse: collapse; width: 100%; font-size: .94rem; }
+  .scorecard th, .scorecard td { text-align: left; padding: 13px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .scorecard thead th { font-family: var(--font-mono); font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); background: var(--panel2); }
+  .scorecard td:first-child { font-family: var(--font-mono); font-size: .8rem; color: var(--muted); white-space: nowrap; }
+  .scorecard td .a { color: var(--warn); } .scorecard td .b { color: var(--good); }
+  .scorecard tr:last-child td { border-bottom: none; }
+
+  .callout { margin-top: 26px; border-left: 3px solid var(--accent); background: var(--panel); border-radius: 0 12px 12px 0; padding: 16px 22px; }
+  .callout p { margin: 0; font-size: 1.05rem; }
+  .callout .big { font-weight: 600; letter-spacing: -.01em; }
+  .foot { color: var(--faint); font-family: var(--font-mono); font-size: .78rem; margin-top: 30px; }
+  .hint { color: var(--faint); font-family: var(--font-mono); font-size: .74rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <span class="mark">loop<span class="b">breaker</span></span>
+      <span class="tag">bounded review over a contract from outside the loop</span>
+    </div>
+    <nav aria-label="Views">
+      <button data-go="system" aria-current="true"><span class="n">1</span> System</button>
+      <button data-go="run"><span class="n">2</span> The run</button>
+      <button data-go="compare"><span class="n">3</span> Arm A vs Arm B</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ================= VIEW 1 — SYSTEM ================= -->
+  <section data-view="system" class="active">
+    <p class="eyebrow">The harness · hooks · skills · gates</p>
+    <h1 class="view-h">One pipeline, six ordered gates, two things an agent cannot fake</h1>
+    <p class="view-sub">Every source edit is refused until an issue clears the gates in order. The premise comes from a human; the proof comes from an exit code. Nothing between the two grades its own work.</p>
+
+    <div class="spine-scroll">
+      <div class="spine">
+        <div class="gate human"><span class="g-role">human · gate 0</span><span class="g-name">Discovery</span><span class="gate-state st-info">interview → ratify</span><span class="g-meta">premise from a person, not the agent</span></div>
+        <span class="conn">→</span>
+        <div class="gate"><span class="g-role">gate 1</span><span class="g-name">Shape</span><span class="gate-state st-info">bounded bet</span><span class="g-meta">appetite · slice · non-goals · risks</span></div>
+        <span class="conn">→</span>
+        <div class="gate"><span class="g-role">gate 2</span><span class="g-name">Plan</span><span class="gate-state st-info">health ≥ 80</span><span class="g-meta">scope · contract · proof plan</span></div>
+        <span class="conn">→</span>
+        <div class="gate codex"><span class="g-role">codex · gate 3</span><span class="g-name">Planning review</span><span class="gate-state st-info">≤ 3 passes</span><span class="g-meta">independent — admits or holds</span></div>
+        <span class="conn">⇥</span>
+        <div class="gate"><span class="g-role">gate 4</span><span class="g-name">Implement + Prove</span><span class="gate-state st-info">red → green</span><span class="g-meta">harness first, exit code = verdict</span></div>
+        <span class="conn">→</span>
+        <div class="gate codex"><span class="g-role">codex · gate 5</span><span class="g-name">Code review</span><span class="gate-state st-info">≤ 3 passes</span><span class="g-meta">comprehensive · repair · decision</span></div>
+        <span class="conn">→</span>
+        <div class="gate"><span class="g-role">gate 6</span><span class="g-name">Ship</span><span class="gate-state st-info">every behavior verified</span><span class="g-meta">separate fact from review</span></div>
+      </div>
+    </div>
+    <p class="hint">⇥ = admission. No worker starts before it. Dashed nodes run on a different vendor (Codex CLI) so review is structurally independent, not promised.</p>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Two hooks make it load-bearing <span class="tick">src/hooks.ts</span></h3>
+        <ul class="kv">
+          <li><span class="k">SessionStart</span><span class="v"><b>prime</b> — binds the active issue and states the gate the agent is behind. Unlinked, the plugin is inert.</span></li>
+          <li><span class="k">PreToolUse</span><span class="v"><b>admission</b> — <span style="color:var(--warn)">denies</span> every source edit until shape ✓ planning ✓ independent planning-review ✓, in that order. Bash and reads pass.</span></li>
+        </ul>
+        <p>The gate isn't advice the agent may follow. It's a wall in front of the editor.</p>
+      </div>
+
+      <div class="card">
+        <h3>Seven skills, one per role</h3>
+        <div class="chips">
+          <span class="chip">discovery-interview</span><span class="chip">shape-strategy</span>
+          <span class="chip">plan-feature</span><span class="chip hl">review-planning</span>
+          <span class="chip">implement-feature</span><span class="chip hl">review-invariants</span>
+          <span class="chip">orchestrate-delivery</span>
+        </div>
+        <p>Highlighted two are the reviewers. They inspect and record only — they never edit the shape, contract, or plan they are judging.</p>
+      </div>
+
+      <div class="card">
+        <h3>Evidence is executed, never asserted</h3>
+        <p class="lead"><code>loopbreaker prove BEHAVIOR</code> runs the registered harness and writes the row itself. The verdict is the harness exit code.</p>
+        <ul class="kv">
+          <li><span class="k">not_run</span><span class="v">fail-closed default — failing to observe a pass is never a pass.</span></li>
+          <li><span class="k">red-first</span><span class="v">a harness must fail against HEAD before the work exists, or it proves nothing.</span></li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Two-way harness binding</h3>
+        <ul class="kv">
+          <li><span class="k">behavior</span><span class="v">names its harness — data, cheap, revocable.</span></li>
+          <li><span class="k">harness</span><span class="v">names the behavior back in <code>proves</code> — reviewed code, visible in a diff.</span></li>
+        </ul>
+        <p>Neither half alone counts, so an agent can't quietly point a behavior at a test that cannot fail.</p>
+      </div>
+
+      <div class="card">
+        <h3>Bounded passes end the loop</h3>
+        <p class="lead">Planning review and code review each get <b>comprehensive → repair-verification → decision</b>. There is no pass four.</p>
+        <p>A round that spends its budget ends the <em>round</em>, not the issue — the open findings become the work list, and re-opening a round is a named human act on the record.</p>
+      </div>
+
+      <div class="card codex-note">
+        <h3>The reviewer is a different vendor</h3>
+        <p class="lead">Planning review and code review run on the <b>Codex CLI</b>, injected with the loopbreaker MCP server, recording its own passes and findings.</p>
+        <p>Independence isn't a second Claude prompt told to be skeptical — it's a different model family that never saw the build.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= VIEW 2 — THE RUN ================= -->
+  <section data-view="run">
+    <p class="eyebrow">MKTG-EMAIL-1 · one issue, all the way to ship</p>
+    <h1 class="view-h">“Design and send a marketing email from the dashboard” — through every gate</h1>
+    <p class="view-sub">The same one-line desire as Arm A. Here is what the substrate actually recorded, gate by gate. Every green mark below is a fact the database holds, not a claim.</p>
+
+    <div class="spine-scroll">
+      <div class="spine">
+        <div class="gate human"><span class="g-role">human · gate 0</span><span class="g-name">Discovery</span><span class="gate-state st-pass">approved</span><span class="g-meta">by Ben Freed · 07-28</span></div>
+        <span class="conn">→</span>
+        <div class="gate"><span class="g-role">gate 1</span><span class="g-name">Shape</span><span class="gate-state st-pass">proceed</span><span class="g-meta">unbounded · 5 risks accepted</span></div>
+        <span class="conn">→</span>
+        <div class="gate"><span class="g-role">gate 2</span><span class="g-name">Plan</span><span class="gate-state st-pass">100 / healthy</span><span class="g-meta">5 dimensions 20/20</span></div>
+        <span class="conn">→</span>
+        <div class="gate codex"><span class="g-role">codex · gate 3</span><span class="g-name">Planning review</span><span class="gate-state st-pass">approved</span><span class="g-meta">changes required → revised</span></div>
+        <span class="conn">⇥</span>
+        <div class="gate"><span class="g-role">gate 4</span><span class="g-name">Implement + Prove</span><span class="gate-state st-pass">9 red → green</span><span class="g-meta">wired + live harnesses</span></div>
+        <span class="conn">→</span>
+        <div class="gate codex"><span class="g-role">codex · gate 5</span><span class="g-name">Code review</span><span class="gate-state st-fail">R1 failed → R2 pass</span><span class="g-meta">4 findings · 2 survived R1</span></div>
+        <span class="conn">→</span>
+        <div class="gate"><span class="g-role">gate 6</span><span class="g-name">Ship</span><span class="gate-state st-pass">9 / 9 verified</span><span class="g-meta">0 waived</span></div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Discovery — what the human chose <span class="tick">8 answers</span></h3>
+        <ul class="kv">
+          <li><span class="k">who</span><span class="v"><b>internal operator tool</b> — one operator, occasional announcements</span></li>
+          <li><span class="k">appetite</span><span class="v"><b>unbounded</b> — "whatever it takes", risk accepted</span></li>
+          <li><span class="k">slice</span><span class="v">compose → send for real → record</span></li>
+          <li><span class="k">compliance</span><span class="v">unsubscribe + suppression + footer, <b>from day one</b></span></li>
+          <li><span class="k">owner</span><span class="v">ben@rordi.ai owns go / no-go</span></li>
+        </ul>
+        <p class="snip-label" style="margin-top:14px">Selected OUT — non-goals</p>
+        <div class="chips">
+          <span class="chip no">scheduling / send-later</span>
+          <span class="chip no">saved lists &amp; segments</span>
+          <span class="chip no">open / click analytics</span>
+          <span class="chip ok">template library — kept IN</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>The frozen acceptance surface <span class="tick">9 enforced behaviors</span></h3>
+        <ul class="kv" style="gap:7px">
+          <li><span class="k">B1</span><span class="v">compose → a real message is accepted by the provider</span></li>
+          <li><span class="k">B2</span><span class="v">every message carries postal address + its own unsub token</span></li>
+          <li><span class="k">B3</span><span class="v">unsubscribe is deliberate; survives key rotation</span></li>
+          <li><span class="k">B4</span><span class="v">suppressed addresses excluded; rest still send</span></li>
+          <li><span class="k">B5</span><span class="v">recipient outside allowlist rejected before provider</span></li>
+          <li><span class="k">B6</span><span class="v">every attempt leaves an auditable record</span></li>
+          <li><span class="k">B7</span><span class="v">disabled send path fails loudly, never silent</span></li>
+          <li><span class="k">B8</span><span class="v">templates give a compliant starting draft</span></li>
+          <li><span class="k">B9</span><span class="v">only the authed operator sends / reads history</span></li>
+        </ul>
+      </div>
+
+      <div class="card span2">
+        <h3>Code review — the gate did not rubber-stamp <span class="tick">the strongest moment</span></h3>
+        <p>Round 1 spent its full three-pass budget and <span style="color:var(--warn)">failed</span>. Two findings were repaired and re-verified; two survived and became the work list. A human opened round 2, whose comprehensive pass confirmed the repairs.</p>
+        <div class="rounds">
+          <div class="round">
+            <div class="rhead"><span style="color:var(--warn)">●</span> Round 1 — budget spent, round ends</div>
+            <div class="passes">
+              <span class="pass f">comprehensive · fail</span>
+              <span class="pass f">repair-verification · fail</span>
+              <span class="pass f">decision · fail</span>
+            </div>
+          </div>
+          <div class="round">
+            <div class="rhead"><span style="color:var(--good)">●</span> Round 2 — opened by ben@rordi.ai, a named human act</div>
+            <div class="passes"><span class="pass p">comprehensive · pass</span></div>
+          </div>
+        </div>
+        <ul class="findings">
+          <li class="finding"><span class="sev">P1</span><span class="ftxt"><span class="fid">R1-AUTH-ROUTE</span><br>Composer route not refused server-side for unauthenticated requests</span><span class="verdict repaired">repaired ✓</span></li>
+          <li class="finding"><span class="sev">P1</span><span class="ftxt"><span class="fid">R1-STALE-HARNESS</span><br>Registered harnesses could pass against a stale product build</span><span class="verdict repaired">repaired ✓</span></li>
+          <li class="finding"><span class="sev">P1</span><span class="ftxt"><span class="fid">R1-AUDIT-PAYLOAD</span><br>Migration gap drops all but the first recipient's audited payload</span><span class="verdict survived">survived R1</span></li>
+          <li class="finding"><span class="sev">P1</span><span class="ftxt"><span class="fid">R1-AUDIT-RECOVERY</span><br>A store-wide outage loses the reconcilable audit record after accept</span><span class="verdict survived">survived R1</span></li>
+        </ul>
+        <p style="margin-top:14px"><b style="color:var(--fg)">Both survivors are audit/durability bugs Arm A cannot reach</b> — its store is in-memory mock data, so there is no migration path and no durable row to lose.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= VIEW 3 — COMPARE ================= -->
+  <section data-view="compare">
+    <p class="eyebrow">Same model · same template · same one line</p>
+    <h1 class="view-h">Raw agent vs the loopbreaker harness on top</h1>
+    <p class="view-sub">Both arms got the exact same prompt and the same starting repo. The only variable is the gate structure. Here is what each one did with it.</p>
+
+    <div class="compare">
+      <div class="armcol">
+        <div class="armhead a">
+          <div class="tagline">ARM A · raw Claude Code</div>
+          <h3>No structure</h3>
+          <div class="who">Prompt, in full:</div>
+        </div>
+        <pre><span class="cm"># the entire input</span>
+"Add a way to design and send a
+ marketing email from the dashboard."
+
+<span class="cm"># → ran immediately. invented scope:</span>
+<span class="cm">#   campaigns, segments, avg open rate</span>
+<span class="cm">#   (analytics was an explicit non-goal)</span></pre>
+        <div>
+          <p class="snip-label">What it built</p>
+          <pre><span class="cm">// service.ts — the "audit" layer</span>
+import { fakeCampaigns } from
+  '@/constants/<span class="warnt">mock-api-campaigns</span>';
+
+<span class="cm">// resend.server.ts</span>
+<span class="cm">/** Campaign (bulk) sends stay
+    <span class="warnt">simulated</span> unless explicitly
+    turned on. */</span></pre>
+        </div>
+        <div class="card" style="background:var(--panel2)">
+          <ul class="kv" style="gap:7px">
+            <li><span class="k">tests</span><span class="v"><b style="color:var(--warn)">0</b> — none, anywhere</span></li>
+            <li><span class="k">sign-off</span><span class="v">"Resend is hooked up and <b>verified end to end</b>"</span></li>
+            <li><span class="k">review</span><span class="v">none — self-declared done</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="armcol">
+        <div class="armhead b">
+          <div class="tagline">ARM B · loopbreaker harness</div>
+          <h3>Full pipeline</h3>
+          <div class="who">Same prompt → a discovery interview elicited it, a human ratified it:</div>
+        </div>
+        <pre><span class="cm"># same one line, then the gate asked:</span>
+Q: Who is this for?
+A: <span class="goodt">internal operator tool</span>
+
+Q: What are we NOT doing?
+A: <span class="goodt">scheduling · segments · analytics</span>
+
+<span class="cm"># premise APPROVED by Ben Freed</span></pre>
+        <div>
+          <p class="snip-label">What it built (a proof, not a claim)</p>
+          <pre><span class="cm">// test/wired/mktg-email-1-b5.test.ts</span>
+<span class="kw">it</span>('rejects the send by name and
+    never reaches the provider', <span class="kw">async</span> () => {
+  <span class="kw">await expect</span>(sendMarketingEmail(
+    { recipients: [ALLOWED_A, <span class="goodt">OUTSIDER</span>] }, …))
+    .rejects…
+  <span class="kw">expect</span>(transport.sent).<span class="goodt">toHaveLength(0)</span>
+})</pre>
+        </div>
+        <div class="card" style="background:var(--panel2)">
+          <ul class="kv" style="gap:7px">
+            <li><span class="k">tests</span><span class="v"><b style="color:var(--good)">9</b> behaviors, proven red → green</span></li>
+            <li><span class="k">sign-off</span><span class="v">exit codes — <b>prove B5</b> pass in 5.4s</span></li>
+            <li><span class="k">review</span><span class="v">Codex, bounded — found 4 real bugs</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="scorecard">
+      <table>
+        <thead><tr><th>&nbsp;</th><th>Arm A — raw</th><th>Arm B — loopbreaker</th></tr></thead>
+        <tbody>
+          <tr><td>premise</td><td><span class="a">self-invented (campaigns + analytics)</span></td><td><span class="b">human-ratified from a discovery interview</span></td></tr>
+          <tr><td>data / audit</td><td><span class="a">in-memory mock store</span></td><td><span class="b">real store; record written before any guard</span></td></tr>
+          <tr><td>real send</td><td><span class="a">simulated by default</span></td><td><span class="b">real; per-recipient unsubscribe tokens</span></td></tr>
+          <tr><td>proof</td><td><span class="a">0 tests; "verified" = eyeballed config</span></td><td><span class="b">9 behaviors, executed red → green</span></td></tr>
+          <tr><td>review</td><td><span class="a">none — self-declared done</span></td><td><span class="b">bounded round failed on 2 audit bugs → round 2 → ship</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <p class="big">Not a smarter agent. A bounded one — over a contract that came from outside the loop.</p>
+      <p style="color:var(--muted);margin-top:8px">Arm A wasn't lazy: it wired real Resend and labelled its states. It was <em>unbounded and unverified</em>. That's the whole difference.</p>
+    </div>
+    <p class="foot">github.com/rordi-ai/loopbreaker · substrate: MKTG-EMAIL-1 · both arms from one clone of tanstack-start-dashboard</p>
+  </section>
+
+</main>
+
+<script>
+  (function () {
+    var views = Array.prototype.slice.call(document.querySelectorAll('section[data-view]'));
+    var btns = Array.prototype.slice.call(document.querySelectorAll('nav button'));
+    var order = ['system', 'run', 'compare'];
+    function show(name) {
+      views.forEach(function (v) { v.classList.toggle('active', v.dataset.view === name); });
+      btns.forEach(function (b) { b.setAttribute('aria-current', b.dataset.go === name ? 'true' : 'false'); });
+      if (location.hash.slice(1) !== name) history.replaceState(null, '', '#' + name);
+      window.scrollTo({ top: 0 });
+    }
+    btns.forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.go); }); });
+    addEventListener('keydown', function (e) {
+      if (e.key === '1' || e.key === '2' || e.key === '3') { show(order[+e.key - 1]); return; }
+      var cur = order.indexOf((location.hash.slice(1) || 'system'));
+      if (cur < 0) cur = 0;
+      if (e.key === 'ArrowRight') show(order[Math.min(order.length - 1, cur + 1)]);
+      if (e.key === 'ArrowLeft') show(order[Math.max(0, cur - 1)]);
+    });
+    addEventListener('hashchange', function () {
+      var h = location.hash.slice(1);
+      if (order.indexOf(h) >= 0) show(h);
+    });
+    var initial = location.hash.slice(1);
+    show(order.indexOf(initial) >= 0 ? initial : 'system');
+  })();
+</script>
+</body>
+</html>
