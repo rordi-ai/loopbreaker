@@ -75,6 +75,9 @@
   nav button[aria-current="true"] { color: var(--fg); background: var(--panel2); border-color: var(--line2); }
   nav button[aria-current="true"] .n { color: var(--accent); }
   nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .theme-toggle { margin-left: 10px; font-size: 1rem; line-height: 1; color: var(--muted); background: transparent; border: 1px solid var(--line2); border-radius: 8px; padding: 7px 11px; cursor: pointer; transition: color .15s, border-color .15s; }
+  .theme-toggle:hover { color: var(--fg); border-color: var(--accent); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   section[data-view] { display: none; padding: clamp(24px,4vh,44px) 0 80px; }
   section[data-view].active { display: block; animation: fade .28s ease both; }
@@ -256,6 +259,7 @@
       <button data-go="run"><span class="n">2</span> Live run</button>
       <button data-go="compare"><span class="n">3</span> With vs without</button>
     </nav>
+    <button class="theme-toggle" id="themeBtn" type="button" aria-label="Toggle light / dark theme" title="Toggle theme">☾</button>
   </div>
 </header>
 
@@ -556,6 +560,20 @@ git worktree remove --force .review-wt           <span class="cm"># gone — onl
         fsBtn.textContent = document.fullscreenElement ? '✕ Exit full screen' : '⛶ Full screen';
       });
     }
+
+    var root = document.documentElement;
+    var themeBtn = document.getElementById('themeBtn');
+    function systemDark() { return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    function currentTheme() { return root.getAttribute('data-theme') || (systemDark() ? 'dark' : 'light'); }
+    function applyTheme(t) { root.setAttribute('data-theme', t); if (themeBtn) themeBtn.textContent = t === 'dark' ? '☀' : '☾'; }
+    var savedTheme = null;
+    try { savedTheme = localStorage.getItem('lb-theme'); } catch (e) {}
+    applyTheme(savedTheme || (systemDark() ? 'dark' : 'light'));
+    if (themeBtn) themeBtn.addEventListener('click', function () {
+      var next = currentTheme() === 'dark' ? 'light' : 'dark';
+      try { localStorage.setItem('lb-theme', next); } catch (e) {}
+      applyTheme(next);
+    });
 
     var initial = location.hash.slice(1);
     show(order.indexOf(initial) >= 0 ? initial : 'pipeline');
