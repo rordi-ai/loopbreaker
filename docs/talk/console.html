@@ -280,11 +280,13 @@
     <div class="flowline">
       <div class="stg" data-n="▸">
         <h3>It starts with a prompt <span class="who">one session</span></h3>
-        <p class="what">The whole run is a single agent session &mdash; nothing is wired up by hand. Left alone, an agent with every tool loaded just starts coding and never touches loopbreaker at all (observed directly). One hook fixes that, and it's not magic: at session start it prepends a block of <b>plain instructions</b> to the agent's context &mdash; run the ordered pipeline, here are the CLI commands and MCP tools, don't invent the premise. Once an issue is linked, that same block also states the active issue and the exact gate it's on. Simple, and advisory &mdash; but without it the pipeline is invisible.</p>
+        <p class="what">The whole run is one agent session. At its start the <code>SessionStart</code> hook checks the <code>workspace</code> table for a <b>linked issue</b> and prepends a block of text to the agent's context. With nothing linked yet, that block is a bootstrap notice: run the ordered pipeline, here are the CLI commands and MCP tools, link an issue first. Linking is its own step &mdash; <code>loopbreaker link ISSUE</code>, or the <code>delivery_link</code> MCP tool &mdash; which sets the active issue in <code>workspace</code>, the single row both hooks read. Once an issue is linked, the block instead names that issue and the gate it's currently on. This hook only informs; blocking is the other hook, in the shape step.</p>
         <div class="map">
           <span class="m"><span class="mk">hook</span><span class="mv hook">SessionStart &rarr; prime</span></span>
-          <span class="m"><span class="mk">injects</span><span class="mv">the pipeline + which tools to use, as session context</span></span>
+          <span class="m"><span class="mk">reads</span><span class="mv">workspace.active_issue &middot; set by loopbreaker link / delivery_link</span></span>
+          <span class="m"><span class="mk">injects</span><span class="mv">the pipeline + tools, then the active issue &amp; gate</span></span>
         </div>
+        <div class="st-schema"><span class="tbl">workspace</span> active_issue   <span class="cm">&larr; the link; the one row both hooks read</span></div>
       </div>
 
       <div class="stg" data-n="1">
