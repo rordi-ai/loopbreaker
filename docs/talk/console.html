@@ -361,6 +361,24 @@
       </div>
     </div>
 
+    <div class="block">
+      <h2>How it's recorded — the data model</h2>
+      <p class="blurb">Every step above writes to one of these tables in the SQLite file. And the rules aren't conventions bolted on afterward — they're <b>CHECK constraints in the schema itself</b>, so a row that would break a rule simply can't be written.</p>
+      <pre><span class="kw">issues</span>              id &middot; title &middot; description
+<span class="kw">discovery_records</span>   issue_id &middot; <span class="goodt">status(draft|approved)</span> &middot; <span class="goodt">approved_by</span> &middot; approved_at   <span class="cm">&larr; the human sign-off, recorded</span>
+<span class="kw">discovery_answers</span>   issue_id &middot; field &middot; question &middot; answer                        <span class="cm">&larr; the interview, verbatim</span>
+<span class="kw">shape_assessments</span>   issue_id &middot; profile_json                                     <span class="cm">&larr; the bounded bet</span>
+<span class="kw">planning_profiles</span>   issue_id &middot; profile_json                                     <span class="cm">&larr; the plan + proof plan</span>
+<span class="kw">behaviors</span>           id &middot; issue_id &middot; title &middot; trigger &middot; expected &middot; verify
+                    &middot; <span class="goodt">status(pending|verified|failed|waived)</span> &middot; enforced   <span class="cm">&larr; the frozen requirements</span>
+<span class="kw">planning_review_passes</span>  <span class="goodt">pass_number CHECK BETWEEN 1 AND 3</span> &middot; verdict(approved|changes_required|…)
+<span class="kw">review_passes</span>       round &middot; <span class="goodt">pass_number CHECK BETWEEN 1 AND 3</span> &middot; verdict(pass|fail)   <span class="cm">&larr; &ldquo;no pass four&rdquo; is a DB constraint</span>
+<span class="kw">findings</span>            severity(P0-P3) &middot; status(open|repaired|accepted_debt) &middot; smallest_fix
+<span class="kw">evidence</span>            behavior_id &middot; <span class="goodt">tier(unit|wired|live)</span> &middot; <span class="goodt">verdict(pass|fail|not_run)</span> &middot; source   <span class="cm">&larr; not_run: absence &ne; a pass</span>
+<span class="kw">waivers</span>             behavior_id &middot; rationale &middot; <span class="goodt">approved_by</span></pre>
+      <p class="expand-note">Read the constraints and the rules are right there: <code>pass_number BETWEEN 1 AND 3</code> is literally &ldquo;no pass four.&rdquo; <code>verdict IN ('pass','fail','not_run')</code> makes an unrun proof its own state &mdash; absence is never a pass. A discovery record can't reach <code>approved</code> without a name in <code>approved_by</code>. The rules live where the data does.</p>
+    </div>
+
     <p class="expand-note" style="margin-top:24px">It's all one session &mdash; <code>orchestrate-delivery</code> runs the roles so no context grades its own work. And every call above writes <b>one row</b> to that single SQLite file. The live graph in the next tab isn't a picture <em>of</em> this &mdash; it <b>is</b> this, drawn.</p>
   </section>
 
