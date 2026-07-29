@@ -220,6 +220,24 @@
   .callout .big { font-weight: 600; letter-spacing: -.01em; }
   .foot { color: var(--faint); font-family: var(--font-mono); font-size: .78rem; margin-top: 28px; }
   .hint { color: var(--faint); font-family: var(--font-mono); font-size: .74rem; margin-top: 14px; }
+
+  /* seamless-session timeline */
+  .flowline { margin-top: 30px; border-left: 2px solid var(--line2); display: flex; flex-direction: column; }
+  .stg { position: relative; padding: 20px 0 22px 32px; }
+  .stg + .stg { border-top: 1px solid var(--line); }
+  .stg::before { content: attr(data-n); position: absolute; left: -14px; top: 22px; width: 26px; height: 26px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line2); font-family: var(--font-mono); font-size: .72rem; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  .stg.human::before { border-color: color-mix(in srgb, var(--amber) 60%, var(--line2)); color: var(--amber); }
+  .stg.codex::before { border-style: dashed; color: var(--accent); }
+  .stg h3 { font-size: 1.12rem; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .stg h3 .who { font-family: var(--font-mono); font-size: .7rem; font-weight: 400; padding: 2px 8px; border-radius: 5px; border: 1px solid var(--line2); color: var(--muted); }
+  .stg h3 .who.codex { color: var(--accent); border-color: var(--accent-dim); border-style: dashed; }
+  .stg h3 .who.human { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 40%, var(--line2)); }
+  .stg .what { color: var(--muted); font-size: .97rem; margin: 8px 0 0; max-width: 76ch; line-height: 1.56; }
+  .stg .what b { color: var(--fg); } .stg .what code { color: var(--accent); }
+  .map { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 14px; }
+  .map .m { font-family: var(--font-mono); font-size: .78rem; display: inline-flex; gap: 8px; align-items: baseline; }
+  .map .mk { color: var(--faint); text-transform: uppercase; letter-spacing: .06em; font-size: .66rem; }
+  .map .mv { color: var(--accent); } .map .mv.hook { color: var(--amber); } .map .mv.none { color: var(--warn); }
 </style>
 </head>
 <body>
@@ -242,125 +260,108 @@
 
   <!-- ================= 1 — HOW IT WORKS ================= -->
   <section data-view="pipeline" class="active">
-    <p class="eyebrow">What it is · every piece</p>
-    <h1 class="view-h">A quality layer around an AI coding agent.</h1>
-    <p class="view-sub">It adds two things to how an AI already builds: a person confirms the <em>goal</em> before any code, and every requirement is checked by a <em>test that actually runs</em>. Here's the whole thing, piece by piece.</p>
+    <p class="eyebrow">one agent session · a prompt in, shipped software out</p>
+    <h1 class="view-h">It's one seamless run — not steps you invoke by hand.</h1>
+    <p class="view-sub">You give an AI coding agent a one-line prompt. From there it's a <em>single continuous session</em> that flows through discovery, a human sign-off, an independent plan review, the build, and code review. Each stage is driven by a <em>skill</em>, recorded through an <em>MCP tool</em> or <em>CLI command</em>, with two <em>hooks</em> holding the line. Here it is, stage by stage — mapped to what actually runs.</p>
 
-    <div class="spine-scroll">
-      <div class="spine">
-        <div class="gate human"><span class="g-role">human · start</span><span class="g-name">The goal</span><span class="gate-state st-info">a person sets it</span><span class="g-meta">what to build, and why</span></div>
-        <span class="conn">→</span>
-        <div class="gate"><span class="g-role">step 2</span><span class="g-name">Scope</span><span class="gate-state st-info">sized</span><span class="g-meta">how big · what's left out</span></div>
-        <span class="conn">→</span>
-        <div class="gate"><span class="g-role">step 3</span><span class="g-name">Plan</span><span class="gate-state st-info">planned</span><span class="g-meta">how it'll be built</span></div>
-        <span class="conn">→</span>
-        <div class="gate codex"><span class="g-role">2nd AI</span><span class="g-name">Plan review</span><span class="gate-state st-info">checked</span><span class="g-meta">a different AI reviews it</span></div>
-        <span class="conn">→</span>
-        <div class="gate"><span class="g-role">step 5</span><span class="g-name">Build + test</span><span class="gate-state st-info">tested for real</span><span class="g-meta">build it, then run the tests</span></div>
-        <span class="conn">→</span>
-        <div class="gate codex"><span class="g-role">2nd AI</span><span class="g-name">Code review</span><span class="gate-state st-info">reviewed</span><span class="g-meta">a different AI reads the code</span></div>
-        <span class="conn">→</span>
-        <div class="gate"><span class="g-role">step 7</span><span class="g-name">Ship</span><span class="gate-state st-info">meets the bar</span><span class="g-meta">only if every test passed</span></div>
-      </div>
+    <div class="stack">
+      <span class="s-item">a <b>CLI</b> + <b>MCP server</b></span>
+      <span class="s-item">TypeScript on Node</span>
+      <span class="s-item">state in one <b>SQLite</b> file (built-in, no native deps)</span>
+      <span class="s-item">live graph: React + WebSocket</span>
+      <span class="s-item">installs as a <b>Claude Code + Codex plugin</b></span>
     </div>
-    <p class="hint">The two review steps run on a <em>different</em> AI (Codex) — so nothing signs off on its own work.</p>
 
-    <div class="block">
-      <h2>The bounded loop — what stops the sprawl</h2>
-      <p class="blurb">Review is where these processes usually spiral: every pass finds something new, so it never ends. This caps it. Each review gets three passes and no more.</p>
-      <div class="loop">
-        <div class="loop-passes">
-          <div class="pnode"><div class="pn">pass 1</div><div class="pt">Comprehensive</div><div class="pd">find it all, once</div></div>
-          <span class="conn">→</span>
-          <div class="pnode"><div class="pn">pass 2</div><div class="pt">Repair check</div><div class="pd">only the fixes</div></div>
-          <span class="conn">→</span>
-          <div class="pnode"><div class="pn">pass 3</div><div class="pt">Decision</div><div class="pd">ship, or don't</div></div>
-          <span class="conn">→</span>
-          <div class="pnode stop"><div class="pn">no pass 4</div><div class="pt">✕ it stops</div><div class="pd">under any framing</div></div>
+    <div class="flowline">
+      <div class="stg" data-n="▸">
+        <h3>It starts with a prompt <span class="who">one session</span></h3>
+        <p class="what">The whole thing is a single agent session &mdash; nothing is wired up by hand. The instant the session opens, a hook orients the agent to what it's working on.</p>
+        <div class="map">
+          <span class="m"><span class="mk">hook</span><span class="mv hook">SessionStart &rarr; prime</span></span>
+          <span class="m"><span class="mk">does</span><span class="mv">names the active issue + the gate it's behind</span></span>
         </div>
-        <p class="loop-note">Still failing after three? The round <b>ends</b> — the open findings become the <b>work list</b>, and opening another round takes a <span class="hl">person: a name and a reason, on the record</span>. So it can't quietly grind forever chasing perfection, and it can't silently ship past unfixed findings either. Every extra round is a deliberate call — <b>that balance is the whole point of the name.</b></p>
+      </div>
+
+      <div class="stg" data-n="1">
+        <h3>Discovery &mdash; turn the request into a real goal</h3>
+        <p class="what">Before anything is built, the agent interviews the one-liner into a scoped goal &mdash; who it's for, appetite, the smallest real slice, non-goals, compliance &mdash; and records every answer <b>verbatim</b> as a draft.</p>
+        <div class="map">
+          <span class="m"><span class="mk">skill</span><span class="mv">discovery-interview</span></span>
+          <span class="m"><span class="mk">writes</span><span class="mv">discovery_record &middot; loopbreaker discover</span></span>
+        </div>
+      </div>
+
+      <div class="stg human" data-n="2">
+        <h3>Approval &mdash; a person signs off <span class="who human">human &middot; in the browser</span></h3>
+        <p class="what">The premise waits in the app's <b>&ldquo;Needs you&rdquo;</b> inbox, showing every question and answer. A person reads them and approves &mdash; with their name. This is <b>absent from the agent's tools by design</b>: there is no call it can make to sign off its own goal. Approval releases the next gate.</p>
+        <div class="map">
+          <span class="m"><span class="mk">surface</span><span class="mv">the app &mdash; &ldquo;Needs you&rdquo; / inbox</span></span>
+          <span class="m"><span class="mk">tool</span><span class="mv none">none &mdash; no MCP equivalent exists</span></span>
+        </div>
+      </div>
+
+      <div class="stg" data-n="3">
+        <h3>Shape &amp; plan &mdash; the bet, then the contract</h3>
+        <p class="what">The agent frames a bounded bet, then writes the <b>behavior contract</b> &mdash; the enforced requirements &mdash; and a <b>proof plan</b> for how each one is tested. Those requirements then freeze. Code still can't be touched: the admission hook refuses every source edit until a review admits the build.</p>
+        <div class="map">
+          <span class="m"><span class="mk">skills</span><span class="mv">shape-strategy &middot; plan-feature</span></span>
+          <span class="m"><span class="mk">writes</span><span class="mv">shape_record &middot; planning_record</span></span>
+          <span class="m"><span class="mk">hook</span><span class="mv hook">PreToolUse &rarr; admission (edits still refused)</span></span>
+        </div>
+      </div>
+
+      <div class="stg codex" data-n="4">
+        <h3>Plan review &mdash; a different AI, before any code <span class="who codex">2nd AI &middot; Codex</span></h3>
+        <p class="what">The plan goes to a second model (Codex, in a throwaway checkout of the exact commit). It can <b>add requirements</b> and catch design bugs on paper &mdash; here it added the whole authorization behavior and flagged a mutating unsubscribe link &mdash; then admit the build or hold it. Bounded to three passes. On approval, implementation is admitted and the hook starts allowing edits.</p>
+        <div class="map">
+          <span class="m"><span class="mk">skill</span><span class="mv">review-planning &middot; Codex CLI</span></span>
+          <span class="m"><span class="mk">writes</span><span class="mv">planning_review_record_pass &middot; _upsert_finding</span></span>
+          <span class="m"><span class="mk">gate</span><span class="mv hook">admission opens on approval</span></span>
+        </div>
+      </div>
+
+      <div class="stg" data-n="5">
+        <h3>Build &amp; prove &mdash; test first, exit-code verdict</h3>
+        <p class="what">Now edits are allowed. Work fans out into <b>isolated git worktrees</b>, one per slice. Each worker writes its test <b>first</b> and proves it <b>fails (red)</b> before writing code, then proves it green. <code>prove</code> runs the test and the <b>exit code is the verdict</b> &mdash; the agent never types &ldquo;pass.&rdquo; It can't change the frozen contract; a real conflict goes back as a question.</p>
+        <div class="map">
+          <span class="m"><span class="mk">skills</span><span class="mv">implement-feature &middot; orchestrate-delivery</span></span>
+          <span class="m"><span class="mk">runs</span><span class="mv">loopbreaker prove &middot; bind</span></span>
+          <span class="m"><span class="mk">hook</span><span class="mv hook">PreToolUse now permits edits</span></span>
+        </div>
+      </div>
+
+      <div class="stg codex" data-n="6">
+        <h3>Code review &mdash; independent, and bounded <span class="who codex">2nd AI &middot; Codex</span></h3>
+        <p class="what">A different AI reviews the finished code against the frozen contract, pinned to the exact commit. This is where these processes usually spiral &mdash; so it is <b>capped at three passes</b>:</p>
+        <div class="loop" style="margin-top:14px">
+          <div class="loop-passes">
+            <div class="pnode"><div class="pn">pass 1</div><div class="pt">Comprehensive</div><div class="pd">find it all, once</div></div>
+            <span class="conn">&rarr;</span>
+            <div class="pnode"><div class="pn">pass 2</div><div class="pt">Repair check</div><div class="pd">only the fixes</div></div>
+            <span class="conn">&rarr;</span>
+            <div class="pnode"><div class="pn">pass 3</div><div class="pt">Decision</div><div class="pd">ship, or don't</div></div>
+            <span class="conn">&rarr;</span>
+            <div class="pnode stop"><div class="pn">no pass 4</div><div class="pt">&#10005; it stops</div><div class="pd">under any framing</div></div>
+          </div>
+          <p class="loop-note">Still failing after three? The round <b>ends</b> &mdash; its open findings become the <b>work list</b>, and opening another takes a <span class="hl">named human act, on the record</span>. It can't grind forever chasing perfection, and it can't silently ship past unfixed findings. <b>That balance is the whole point of the name.</b></p>
+        </div>
+        <div class="map">
+          <span class="m"><span class="mk">skill</span><span class="mv">review-invariants &middot; Codex CLI</span></span>
+          <span class="m"><span class="mk">writes</span><span class="mv">review_record_pass &middot; _upsert_finding &middot; review_record_evidence</span></span>
+          <span class="m"><span class="mk">reopen</span><span class="mv hook">loopbreaker review-round (human)</span></span>
+        </div>
+      </div>
+
+      <div class="stg" data-n="7">
+        <h3>Ship &mdash; only if it's earned</h3>
+        <p class="what">Ship only when every enforced requirement is verified on <b>executed proof</b> (or explicitly waived). Review being finished and being shippable are separate facts.</p>
+        <div class="map">
+          <span class="m"><span class="mk">reads</span><span class="mv">review_ship_status &middot; loopbreaker readiness</span></span>
+        </div>
       </div>
     </div>
 
-    <div class="block">
-      <h2>Two hooks — how it plugs into the agent<span class="ref">src/hooks.ts</span></h2>
-      <ul class="defs">
-        <li><span class="term file">SessionStart → prime</span><span class="desc">Every session, it tells the agent which issue is active and which step it's on. Without it, the whole thing is inert.</span></li>
-        <li><span class="term file">PreToolUse → admission</span><span class="desc">Before any source edit, it checks the plan has been reviewed and approved. If not, the edit is refused. Reads and shell commands pass through.</span></li>
-      </ul>
-    </div>
-
-    <div class="block">
-      <h2>Seven skills — one per step</h2>
-      <ul class="defs">
-        <li><span class="term">discovery-interview</span><span class="desc">Asks a fixed set of premise questions — who it's for, how big, the smallest real slice, what's explicitly out, the success signal, who owns the call — and records the answers <b>verbatim</b>. The agent is barred from approving; a person signs it off. It's the one step the agent can't do for you.</span></li>
-        <li><span class="term">shape-strategy</span><span class="desc">Turns the approved premise into a bounded bet: appetite, the smallest slice that proves it works, explicit non-goals, and risks-with-mitigations it finds by reading the repo. It won't let a missing backend quietly redefine “send” into “simulate.”</span></li>
-        <li><span class="term">plan-feature</span><span class="desc">Writes the <b>behavior contract</b> — the enforced requirements — and a <b>proof plan</b> naming how each one gets tested (in-process, wired, or a real live run). Those requirements then freeze: they're the acceptance surface everything after is measured against.</span></li>
-        <li><span class="term">review-planning <span class="rev">· Codex</span></span><span class="desc">A different AI, in a throwaway checkout, reviews the shape + plan <b>before any code exists</b>. It can add requirements (here it added the entire authorization behavior), catch design bugs on paper — like a mutating unsubscribe link a spam filter would trip — and either admit the build or hold it with findings.</span></li>
-        <li><span class="term">implement-feature</span><span class="desc">Builds against the frozen requirements — and writes each test <b>first</b>, proving it fails (red) before the code exists, so a test can't pass vacuously. It can't change the contract; a real conflict goes back as a question, not a quiet edit.</span></li>
-        <li><span class="term">review-invariants <span class="rev">· Codex</span></span><span class="desc">A different AI reviews the finished code against the frozen contract, in a checkout pinned to the exact commit, recording its own findings and verdict over MCP. Bounded to three passes — comprehensive, repair-check, decision — and no more.</span></li>
-        <li><span class="term">orchestrate-delivery</span><span class="desc">Runs the whole thing as three separated roles so no context grades its own work: a <b>driver</b> that holds state, <b>isolated build workers</b> each in their own git worktree, and the independent <b>Codex reviewer</b>. The frozen contract is the only thing passed between them.</span></li>
-      </ul>
-    </div>
-
-    <div class="block">
-      <h2>How a build actually runs — more than “a skill + the requirements”</h2>
-      <p class="blurb">Implementation isn't one agent freewheeling with a checklist. The orchestrator hands each build worker only its slice, in isolation, and the worker has to <em>prove</em> its work — it can't just say it's done.</p>
-      <ul class="defs">
-        <li><span class="term">the handoff</span><span class="desc">Each worker gets the issue, <b>its slice of the frozen requirements</b> (verbatim), and the proof plan — and nothing about the other work.</span></li>
-        <li><span class="term">isolated</span><span class="desc">It runs in its own throwaway <b>git worktree</b>, so parallel workers can't collide or overwrite each other.</span></li>
-        <li><span class="term">test first · red</span><span class="desc">It writes the test <b>before</b> the code and proves it <b>fails</b> against the current tree — so the test is real, not a fake that always passes.</span></li>
-        <li><span class="term">then build · green</span><span class="desc">It implements, then <code>prove</code> runs the test and the <b>exit code</b> is the verdict. The worker never types “pass.”</span></li>
-        <li><span class="term">can't drift</span><span class="desc">It can't change the requirements. A genuine conflict goes back to the orchestrator as a <b>question</b>, not a quiet edit.</span></li>
-        <li><span class="term">merge + verify</span><span class="desc">The orchestrator merges the worktrees and records the integration proof — and <b>never records a verdict for code it wrote itself</b>.</span></li>
-      </ul>
-    </div>
-
-    <div class="block">
-      <h2>The surface — what it's built from, and driven by</h2>
-      <div class="stack">
-        <span class="s-item">a <b>CLI</b> + <b>MCP server</b></span>
-        <span class="s-item">TypeScript on Node</span>
-        <span class="s-item">state in <b>SQLite</b> (built-in, no native deps)</span>
-        <span class="s-item">live graph: React + WebSocket</span>
-        <span class="s-item">installs as a <b>Claude Code + Codex plugin</b></span>
-      </div>
-      <p class="blurb" style="margin-top:16px">Everything is driven through these. All state lives in that single SQLite file — the shared record every step reads and writes, and what the live graph renders.</p>
-      <p class="snip-label">CLI — for a person</p>
-      <div class="toolset">
-        <span class="s-item">discover</span><span class="s-item">shape</span><span class="s-item">plan</span><span class="s-item">prove</span><span class="s-item">review-round</span><span class="s-item">bind</span><span class="s-item">readiness</span><span class="s-item">substrate</span><span class="s-item">serve</span>
-      </div>
-      <p class="snip-label" style="margin-top:16px">MCP tools — same logic, for an agent</p>
-      <div class="toolset">
-        <span class="s-item">discovery_record</span><span class="s-item">shape_record</span><span class="s-item">planning_review_record_pass</span><span class="s-item">review_record_pass</span><span class="s-item">review_upsert_finding</span><span class="s-item">review_record_evidence</span><span class="s-item">review_verify_behavior</span><span class="s-item">delivery_readiness</span>
-      </div>
-    </div>
-
-    <div class="block">
-      <h2>How the graph gets built — every call is one row</h2>
-      <p class="blurb">The agent drives loopbreaker over <b>MCP</b>; a person can run the exact same steps as <b>CLI</b>. Each call writes one row to the SQLite file — and the live graph in the next tab is just that file, drawn. Nothing is placed by hand; a node exists because a step recorded it.</p>
-      <pre><span class="cm"># the agent, call by call — a person runs the same as `loopbreaker …`</span>
-discovery_record(…)                <span class="cm">→ the human-set goal       ▸ issue node</span>
-shape_record(…)                    <span class="cm">→ the bounded bet          ▸ shape node</span>
-planning_record(…)                 <span class="cm">→ 9 requirements + tests   ▸ planning · behavior nodes</span>
-planning_review_upsert_finding(…)  <span class="cm">→ what the plan review hit ▸ finding nodes</span>
-planning_review_record_pass(…)     <span class="cm">→ admit, or hold           ▸ review node</span>
-<span class="goodt">── implementation admitted ───────────────────────────────</span>
-<span class="kw">loopbreaker prove</span> MKTG-EMAIL-1-B5      <span class="cm">→ RUNS the test, exit 0    ▸ evidence node · verified</span>
-review_upsert_finding(…)           <span class="cm">→ each code-review finding ▸ finding nodes</span>
-review_record_pass(1 · 2 · 3)      <span class="cm">→ the bounded review       ▸ pass nodes</span>
-review_ship_status                 <span class="cm">→ reads the gate           ▸ ship decision</span></pre>
-      <p class="expand-note">Verification isn't a value the agent writes. <code>prove</code> — and its MCP twin — <b>executes</b> the test and records the row itself, with the <b>exit code as the verdict</b>. The agent can't type “pass”; it can only make a real test pass. That's the difference between the green nodes here and “tests passing” in a chat.</p>
-    </div>
-
-    <div class="block">
-      <h2>The one move the agent can't make — a human approves, in the app</h2>
-      <p class="blurb">Every step above is a tool call. Approving the premise is the exception: it is <b>absent from the agent's tools by design</b> — there is no call it can make to sign off its own goal. A person does it in the app's <b>“Needs you”</b> inbox, which shows every interview question and answer first, so it's a real read — not a rubber stamp on text nobody saw. Their name is recorded as the approver, and only then does the build gate open.</p>
-      <ul class="defs">
-        <li><span class="term file">Needs you · /inbox</span><span class="desc">The premise waits here after the interview. It lists the 8 questions and the answers in full.</span></li>
-        <li><span class="term file">Approve the premise</span><span class="desc">Requires a name, records it, releases the shape gate. This is the loop-breaking act — a human, on the record.</span></li>
-      </ul>
-    </div>
+    <p class="expand-note" style="margin-top:24px">It's all one session &mdash; <code>orchestrate-delivery</code> runs the roles so no context grades its own work. And every call above writes <b>one row</b> to that single SQLite file. The live graph in the next tab isn't a picture <em>of</em> this &mdash; it <b>is</b> this, drawn.</p>
   </section>
 
   <!-- ================= 3 — LIVE RUN ================= -->
