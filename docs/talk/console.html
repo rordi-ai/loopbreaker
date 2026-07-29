@@ -226,9 +226,8 @@
     </div>
     <nav aria-label="Views">
       <button data-go="pipeline" aria-current="true"><span class="n">1</span> How it works</button>
-      <button data-go="internals"><span class="n">2</span> Under the hood</button>
-      <button data-go="run"><span class="n">3</span> Live run</button>
-      <button data-go="compare"><span class="n">4</span> With vs without</button>
+      <button data-go="run"><span class="n">2</span> Live run</button>
+      <button data-go="compare"><span class="n">3</span> With vs without</button>
     </nav>
   </div>
 </header>
@@ -237,9 +236,9 @@
 
   <!-- ================= 1 — HOW IT WORKS ================= -->
   <section data-view="pipeline" class="active">
-    <p class="eyebrow">The idea</p>
+    <p class="eyebrow">What it is · every piece</p>
     <h1 class="view-h">A quality layer around an AI coding agent.</h1>
-    <p class="view-sub">It adds two things to how an AI already builds: a person confirms the <em>goal</em> before any code, and every requirement is checked by a <em>test that actually runs</em> — so what ships is closer to what was asked, and shown to work.</p>
+    <p class="view-sub">It adds two things to how an AI already builds: a person confirms the <em>goal</em> before any code, and every requirement is checked by a <em>test that actually runs</em>. Here's the whole thing, piece by piece.</p>
 
     <div class="stack">
       <span class="s-item">a <b>CLI</b> + <b>MCP server</b></span>
@@ -267,19 +266,6 @@
       </div>
     </div>
     <p class="hint">The two review steps run on a <em>different</em> AI (Codex) — so nothing signs off on its own work.</p>
-
-    <div class="tiles">
-      <div class="tile"><span class="t-tag">right thing</span><h3>The goal comes from a person</h3><p>The work starts from what someone actually asked for — not the AI's guess at what they meant.</p></div>
-      <div class="tile"><span class="t-tag">actually works</span><h3>Proven, not claimed</h3><p>A requirement counts as done only when a test that really runs passes. No “trust me, it works.”</p></div>
-      <div class="tile"><span class="t-tag">independent</span><h3>Checked by another AI</h3><p>A second model reviews the plan and the code — and it stops after a few rounds instead of polishing forever.</p></div>
-    </div>
-  </section>
-
-  <!-- ================= 2 — UNDER THE HOOD ================= -->
-  <section data-view="internals">
-    <p class="eyebrow">Under the hood</p>
-    <h1 class="view-h">The actual parts</h1>
-    <p class="view-sub">No summary — here's what's really in it: the loop that stops review from sprawling, two hooks, seven skills, and the tool surface it all runs on.</p>
 
     <div class="block">
       <h2>The bounded loop — what stops the sprawl</h2>
@@ -338,8 +324,7 @@
     <p class="eyebrow" style="margin-bottom:6px">The real app · live over WebSocket · one feature, all the way to ship</p>
     <h1 class="view-h" style="font-size:clamp(1.3rem,2.3vw,1.65rem)">The review graph, straight from the running tool<span style="color:var(--muted);font-weight:400;font-size:.82em"> — zoom, pan, click a node</span></h1>
     <div class="graph-frame" id="graphFrame">
-      <button class="fs-btn" id="fsBtn" type="button">⛶ Full screen</button>
-      <iframe src="https://acfs-dev.tail063234.ts.net:8448/" title="Live loopbreaker review graph — MKTG-EMAIL-1" loading="lazy"></iframe>
+      <iframe src="https://acfs-dev.tail063234.ts.net:8448/" title="Live loopbreaker review graph — MKTG-EMAIL-1" loading="lazy" allow="fullscreen" allowfullscreen></iframe>
     </div>
     <p class="hint">Live from the loopbreaker app itself. If the frame is blank, the app process is down — relaunch it.</p>
   </section>
@@ -446,7 +431,7 @@
   (function () {
     var views = Array.prototype.slice.call(document.querySelectorAll('section[data-view]'));
     var btns = Array.prototype.slice.call(document.querySelectorAll('nav button'));
-    var order = ['pipeline', 'internals', 'run', 'compare'];
+    var order = ['pipeline', 'run', 'compare'];
     function show(name) {
       views.forEach(function (v) { v.classList.toggle('active', v.dataset.view === name); });
       btns.forEach(function (b) { b.setAttribute('aria-current', b.dataset.go === name ? 'true' : 'false'); });
@@ -455,7 +440,7 @@
     }
     btns.forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.go); }); });
     addEventListener('keydown', function (e) {
-      if (e.key >= '1' && e.key <= '4') { show(order[+e.key - 1]); return; }
+      if (e.key >= '1' && e.key <= '3') { show(order[+e.key - 1]); return; }
       var cur = order.indexOf(location.hash.slice(1) || 'pipeline');
       if (cur < 0) cur = 0;
       if (e.key === 'ArrowRight') show(order[Math.min(order.length - 1, cur + 1)]);
@@ -465,18 +450,6 @@
       var h = location.hash.slice(1);
       if (order.indexOf(h) >= 0) show(h);
     });
-    var fsBtn = document.getElementById('fsBtn');
-    var graphFrame = document.getElementById('graphFrame');
-    if (fsBtn && graphFrame) {
-      fsBtn.addEventListener('click', function () {
-        if (document.fullscreenElement) document.exitFullscreen();
-        else if (graphFrame.requestFullscreen) graphFrame.requestFullscreen();
-      });
-      document.addEventListener('fullscreenchange', function () {
-        fsBtn.textContent = document.fullscreenElement ? '✕ Exit full screen' : '⛶ Full screen';
-      });
-    }
-
     var initial = location.hash.slice(1);
     show(order.indexOf(initial) >= 0 ? initial : 'pipeline');
   })();
