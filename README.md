@@ -8,13 +8,15 @@ test loopbreaker runs itself, never a claim.
 
 It is the small public demo extracted from a deeper review-and-shipping feature
 embedded in [Rordi](https://github.com/rordi-ai). It drives an AI coding agent
-through one ordered session — discovery → a human approval → shape → plan → an
+through an ordered pipeline — discovery → a human approval → shape → plan → an
 independent, cross-vendor plan review → build-and-prove → a bounded code review →
 ship — recording every step as rows in a local SQLite file: the issue's discovery
 record, shape decision, planning health, independent planning approval, enforced
 behaviors, executed evidence, findings, bounded review passes, and human waivers.
-The same substrate is exposed to agents over MCP and rendered as a live workflow
-graph.
+Because that state is durable, the pipeline is not bound to one session: a
+different agent, or a later session, links the issue and resumes at the exact
+gate. The same substrate is exposed to agents over MCP and rendered as a live
+workflow graph.
 
 **Why "loopbreaker."** Review is where these processes usually loop without end —
 every pass finds something new, so it never converges. Loopbreaker bounds it: at

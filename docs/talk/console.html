@@ -265,7 +265,7 @@
   <section data-view="pipeline" class="active">
     <p class="eyebrow">what it is</p>
     <h1 class="view-h">A meta-harness for coding agents.</h1>
-    <p class="view-sub">loopbreaker combines <b>MCP tools</b>, a <b>CLI</b>, <b>lifecycle hooks</b>, <b>agent skills</b>, and a <b>structured entity ontology</b> into one strict-but-bounded surface for implementation and review &mdash; with human elicitation and approval required before work can start, and every behavior verified by a test the tool runs itself, never a claim. It's all one agent session; each stage below shows what runs, the skill and the MCP tool or CLI command behind it, the entity it records, and where the hooks apply.</p>
+    <p class="view-sub">loopbreaker combines <b>MCP tools</b>, a <b>CLI</b>, <b>lifecycle hooks</b>, <b>agent skills</b>, and a <b>structured entity ontology</b> into one strict-but-bounded surface for implementation and review &mdash; with human elicitation and approval required before work can start, and every behavior verified by a test the tool runs itself, never a claim. Because every step is recorded in one SQLite file, the run isn't tied to a single session &mdash; a different agent, or a later session, can pick it up at the exact gate it left off. Each stage below shows what runs, the skill and the MCP tool or CLI command behind it, the entity it records, and where the hooks apply.</p>
 
     <div class="stack">
       <span class="s-item">a <b>CLI</b> + <b>MCP server</b></span>
@@ -279,8 +279,8 @@
 
     <div class="flowline">
       <div class="stg" data-n="▸">
-        <h3>It starts with a prompt <span class="who">one session</span></h3>
-        <p class="what">The whole run is one agent session. At its start the <code>SessionStart</code> hook checks the <code>workspace</code> table for a <b>linked issue</b> and prepends a block of text to the agent's context. With nothing linked yet, that block is a bootstrap notice: run the ordered pipeline, here are the CLI commands and MCP tools, link an issue first. Linking is its own step &mdash; <code>loopbreaker link ISSUE</code>, or the <code>delivery_link</code> MCP tool &mdash; which sets the active issue in <code>workspace</code>, the single row both hooks read. Once an issue is linked, the block instead names that issue and the gate it's currently on. This hook only informs; blocking is the other hook, in the shape step.</p>
+        <h3>It starts with a prompt <span class="who">durable state</span></h3>
+        <p class="what">A prompt starts it, but the run doesn't live in the session &mdash; every step is recorded in the <code>workspace</code> and the substrate (one SQLite file), so a different agent, or a later session, can pick it up exactly where it stopped. The <code>SessionStart</code> hook re-orients whoever arrives: it reads the linked issue from <code>workspace</code> and prepends a block of text to their context. With nothing linked yet, that block is a bootstrap notice: run the ordered pipeline, here are the CLI commands and MCP tools, link an issue first. Linking is its own step &mdash; <code>loopbreaker link ISSUE</code>, or the <code>delivery_link</code> MCP tool &mdash; which sets the active issue in <code>workspace</code>, the single row both hooks read. Once an issue is linked, the block instead names that issue and the gate it's currently on. This hook only informs; blocking is the other hook, in the shape step.</p>
         <div class="map">
           <span class="m"><span class="mk">hook</span><span class="mv hook">SessionStart &rarr; prime</span></span>
           <span class="m"><span class="mk">reads</span><span class="mv">workspace.active_issue &middot; set by loopbreaker link / delivery_link</span></span>
@@ -389,7 +389,7 @@ git worktree remove --force .review-wt           <span class="cm"># gone — onl
       <p class="expand-note">That's the independence: the verdict on the graph came from a model running in its own checkout that never saw the code being written, writing over MCP &mdash; nothing the builder can reach in and edit.</p>
     </div>
 
-    <p class="expand-note" style="margin-top:24px">It's all one session &mdash; <code>orchestrate-delivery</code> runs the roles so no context grades its own work. And every call above writes <b>one row</b> to that single SQLite file. The live graph in the next tab isn't a picture <em>of</em> this &mdash; it <b>is</b> this, drawn.</p>
+    <p class="expand-note" style="margin-top:24px">Every call above writes <b>one row</b> to that single SQLite file &mdash; so the run is <b>durable</b>: a different agent, or a later session, links the issue and continues from the exact gate. <code>orchestrate-delivery</code> runs all three roles in one pass so no context grades its own work, but the pipeline doesn't depend on that. The live graph in the next tab isn't a picture <em>of</em> this &mdash; it <b>is</b> this, drawn.</p>
   </section>
 
   <!-- ================= 3 — LIVE RUN ================= -->
