@@ -161,8 +161,9 @@ export function App() {
     setView(next);
   }, []);
 
+  const embed = new URLSearchParams(window.location.search).get("embed") === "1";
   return (
-    <div className="app-root">
+    <div className={`app-root${embed ? " embed" : ""}`}>
       <nav className="app-nav">
         <span className="app-brand">Loopbreaker</span>
         <div className="app-tabs">
@@ -181,6 +182,7 @@ export function App() {
 
 function GraphApp() {
   const pollingOnly = new URLSearchParams(window.location.search).get("transport") === "poll";
+  const embed = new URLSearchParams(window.location.search).get("embed") === "1";
   const [issues, setIssues] = useState<IssueRow[]>([]);
   const [activeIssue, setActiveIssue] = useState("");
   const activeIssueRef = useRef("");
@@ -295,7 +297,7 @@ function GraphApp() {
   const decisionTone = substrate?.shipping.disposition ?? "hold";
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell${embed ? " embed" : ""}`}>
       <header className="app-header">
         <div>
           <span className="product-kicker">LOCAL REVIEW GRAPH</span>

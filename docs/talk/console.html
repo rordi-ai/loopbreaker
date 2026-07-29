@@ -246,14 +246,6 @@
     <h1 class="view-h">A quality layer around an AI coding agent.</h1>
     <p class="view-sub">It adds two things to how an AI already builds: a person confirms the <em>goal</em> before any code, and every requirement is checked by a <em>test that actually runs</em>. Here's the whole thing, piece by piece.</p>
 
-    <div class="stack">
-      <span class="s-item">a <b>CLI</b> + <b>MCP server</b></span>
-      <span class="s-item">TypeScript on Node</span>
-      <span class="s-item">state in <b>SQLite</b> (built-in, no native deps)</span>
-      <span class="s-item">live graph: React + WebSocket</span>
-      <span class="s-item">installs as a <b>Claude Code + Codex plugin</b></span>
-    </div>
-
     <div class="spine-scroll">
       <div class="spine">
         <div class="gate human"><span class="g-role">human · start</span><span class="g-name">The goal</span><span class="gate-state st-info">a person sets it</span><span class="g-meta">what to build, and why</span></div>
@@ -325,8 +317,15 @@
     </div>
 
     <div class="block">
-      <h2>The surface — a CLI + MCP server, one SQLite file</h2>
-      <p class="blurb">Everything above is driven through these. All state lives in a single SQLite file — the shared record every step reads and writes, and what the live graph renders.</p>
+      <h2>The surface — what it's built from, and driven by</h2>
+      <div class="stack">
+        <span class="s-item">a <b>CLI</b> + <b>MCP server</b></span>
+        <span class="s-item">TypeScript on Node</span>
+        <span class="s-item">state in <b>SQLite</b> (built-in, no native deps)</span>
+        <span class="s-item">live graph: React + WebSocket</span>
+        <span class="s-item">installs as a <b>Claude Code + Codex plugin</b></span>
+      </div>
+      <p class="blurb" style="margin-top:16px">Everything is driven through these. All state lives in that single SQLite file — the shared record every step reads and writes, and what the live graph renders.</p>
       <p class="snip-label">CLI — for a person</p>
       <div class="toolset">
         <span class="s-item">discover</span><span class="s-item">shape</span><span class="s-item">plan</span><span class="s-item">prove</span><span class="s-item">review-round</span><span class="s-item">bind</span><span class="s-item">readiness</span><span class="s-item">substrate</span><span class="s-item">serve</span>
@@ -336,6 +335,32 @@
         <span class="s-item">discovery_record</span><span class="s-item">shape_record</span><span class="s-item">planning_review_record_pass</span><span class="s-item">review_record_pass</span><span class="s-item">review_upsert_finding</span><span class="s-item">review_record_evidence</span><span class="s-item">review_verify_behavior</span><span class="s-item">delivery_readiness</span>
       </div>
     </div>
+
+    <div class="block">
+      <h2>How the graph gets built — every call is one row</h2>
+      <p class="blurb">The agent drives loopbreaker over <b>MCP</b>; a person can run the exact same steps as <b>CLI</b>. Each call writes one row to the SQLite file — and the live graph in the next tab is just that file, drawn. Nothing is placed by hand; a node exists because a step recorded it.</p>
+      <pre><span class="cm"># the agent, call by call — a person runs the same as `loopbreaker …`</span>
+discovery_record(…)                <span class="cm">→ the human-set goal       ▸ issue node</span>
+shape_record(…)                    <span class="cm">→ the bounded bet          ▸ shape node</span>
+planning_record(…)                 <span class="cm">→ 9 requirements + tests   ▸ planning · behavior nodes</span>
+planning_review_upsert_finding(…)  <span class="cm">→ what the plan review hit ▸ finding nodes</span>
+planning_review_record_pass(…)     <span class="cm">→ admit, or hold           ▸ review node</span>
+<span class="goodt">── implementation admitted ───────────────────────────────</span>
+<span class="kw">loopbreaker prove</span> MKTG-EMAIL-1-B5      <span class="cm">→ RUNS the test, exit 0    ▸ evidence node · verified</span>
+review_upsert_finding(…)           <span class="cm">→ each code-review finding ▸ finding nodes</span>
+review_record_pass(1 · 2 · 3)      <span class="cm">→ the bounded review       ▸ pass nodes</span>
+review_ship_status                 <span class="cm">→ reads the gate           ▸ ship decision</span></pre>
+      <p class="expand-note">Verification isn't a value the agent writes. <code>prove</code> — and its MCP twin — <b>executes</b> the test and records the row itself, with the <b>exit code as the verdict</b>. The agent can't type “pass”; it can only make a real test pass. That's the difference between the green nodes here and “tests passing” in a chat.</p>
+    </div>
+
+    <div class="block">
+      <h2>The one move the agent can't make — a human approves, in the app</h2>
+      <p class="blurb">Every step above is a tool call. Approving the premise is the exception: it is <b>absent from the agent's tools by design</b> — there is no call it can make to sign off its own goal. A person does it in the app's <b>“Needs you”</b> inbox, which shows every interview question and answer first, so it's a real read — not a rubber stamp on text nobody saw. Their name is recorded as the approver, and only then does the build gate open.</p>
+      <ul class="defs">
+        <li><span class="term file">Needs you · /inbox</span><span class="desc">The premise waits here after the interview. It lists the 8 questions and the answers in full.</span></li>
+        <li><span class="term file">Approve the premise</span><span class="desc">Requires a name, records it, releases the shape gate. This is the loop-breaking act — a human, on the record.</span></li>
+      </ul>
+    </div>
   </section>
 
   <!-- ================= 3 — LIVE RUN ================= -->
@@ -344,7 +369,7 @@
     <h1 class="view-h" style="font-size:clamp(1.3rem,2.3vw,1.65rem)">The review graph, straight from the running tool<span style="color:var(--muted);font-weight:400;font-size:.82em"> — zoom, pan, click a node</span></h1>
     <div class="graph-frame" id="graphFrame">
       <button class="fs-btn" id="fsBtn" type="button">⛶ Full screen</button>
-      <iframe src="https://acfs-dev.tail063234.ts.net:8448/" title="Live loopbreaker review graph — MKTG-EMAIL-1" loading="lazy" allow="fullscreen" allowfullscreen></iframe>
+      <iframe src="https://acfs-dev.tail063234.ts.net:8448/?embed=1" title="Live loopbreaker review graph — MKTG-EMAIL-1" loading="lazy" allow="fullscreen" allowfullscreen></iframe>
     </div>
     <p class="hint">Live from the loopbreaker app itself. If the frame is blank, the app process is down — relaunch it.</p>
   </section>
