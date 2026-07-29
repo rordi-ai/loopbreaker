@@ -372,6 +372,21 @@
       </div>
     </div>
 
+    <div class="block">
+      <h2>How the agent calls Codex — the independent review</h2>
+      <p class="blurb">The session driving the build never reviews its own work. For the two review stages it shells out over the CLI to <b>Codex</b> &mdash; a different vendor's model &mdash; in a throwaway git worktree pinned to the exact commit, with the loopbreaker MCP server injected so Codex records its own passes and findings straight into the same SQLite file.</p>
+      <pre><span class="cm"># the orchestrator runs this per review — a plain shell-out:</span>
+git worktree add --detach .review-wt <span class="goodt">$SHA</span>        <span class="cm"># throwaway checkout, pinned to the commit</span>
+<span class="kw">codex exec</span> --ephemeral --cd .review-wt \          <span class="cm"># run Codex non-interactively, right there</span>
+  -c mcp_servers.loopbreaker.command=node \        <span class="cm"># &larr; inject the loopbreaker MCP server</span>
+  -c mcp_servers.loopbreaker.args=[".../mcp/server.bundle.mjs"] \
+  -c mcp_servers.loopbreaker.env={LOOPBREAKER_DB="&hellip;"} \
+  <span class="goodt">"Review MKTG-EMAIL-1 against the frozen contract. Record your own
+   passes and findings via review_record_pass / review_upsert_finding."</span>
+git worktree remove --force .review-wt           <span class="cm"># gone — only the substrate rows persist</span></pre>
+      <p class="expand-note">That's the independence: the verdict on the graph came from a model running in its own checkout that never saw the code being written, writing over MCP &mdash; nothing the builder can reach in and edit.</p>
+    </div>
+
     <p class="expand-note" style="margin-top:24px">It's all one session &mdash; <code>orchestrate-delivery</code> runs the roles so no context grades its own work. And every call above writes <b>one row</b> to that single SQLite file. The live graph in the next tab isn't a picture <em>of</em> this &mdash; it <b>is</b> this, drawn.</p>
   </section>
 
