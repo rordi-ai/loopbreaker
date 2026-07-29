@@ -9,7 +9,7 @@ export interface ReviewGraph {
 }
 
 const NODE_WIDTH = 340;
-const BEHAVIOR_GAP = 300;
+const BEHAVIOR_GAP = 340;
 
 function node(
   id: string,
@@ -117,7 +117,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
   substrate.planning_findings.forEach((finding, index) => {
     const findingId = `planning-finding:${finding.id}`;
     const tone = finding.status === "repaired" ? "green" : finding.status === "accepted_debt" ? "amber" : "red";
-    nodes.push(node(findingId, 1290, centerY + 360 + index * 190, {
+    nodes.push(node(findingId, 1290, centerY + 400 + index * 320, {
       kind: "finding",
       eyebrow: `${finding.stage} · ${finding.severity} · ${finding.id}`,
       title: finding.title,
@@ -161,7 +161,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
     const key = item.behavior_id ?? "issue";
     const offset = evidenceOffset.get(key) ?? 0;
     evidenceOffset.set(key, offset + 1);
-    const y = item.behavior_id ? (behaviorY.get(item.behavior_id) ?? index * 160) + offset * 150 : centerY + index * 150;
+    const y = item.behavior_id ? (behaviorY.get(item.behavior_id) ?? index * 220) + offset * 280 : centerY + index * 280;
     const evidenceId = `evidence:${item.id}`;
     nodes.push(node(evidenceId, 2150, y, {
       kind: "evidence",
@@ -185,7 +185,7 @@ export function buildReviewGraph(substrate: Substrate): ReviewGraph {
     const key = finding.behavior_id ?? "issue";
     const offset = findingOffset.get(key) ?? 0;
     findingOffset.set(key, offset + 1);
-    const y = finding.behavior_id ? (behaviorY.get(finding.behavior_id) ?? index * 180) + 115 + offset * 170 : centerY + 180 + index * 170;
+    const y = finding.behavior_id ? (behaviorY.get(finding.behavior_id) ?? index * 260) + 160 + offset * 320 : centerY + 200 + index * 320;
     const findingId = `finding:${finding.id}`;
     const tone = finding.status === "repaired" ? "green" : finding.status === "accepted_debt" ? "amber" : "red";
     nodes.push(node(findingId, 2580, y, {

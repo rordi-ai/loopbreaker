@@ -83,7 +83,7 @@ button:hover { border-color: var(--blue); background: var(--blue-soft); transfor
 .workflow-node.kind-decision { background: #171c18; box-shadow: 0 18px 55px rgba(0,0,0,.42); }
 .workflow-node.kind-pass { width: 340px; }
 .node-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.018); }
-.node-header h3 { margin: 3px 0 0; font-size: 14px; line-height: 1.35; letter-spacing: -.015em; }
+.node-header h3 { margin: 3px 0 0; font-size: 14px; line-height: 1.35; letter-spacing: -.015em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .node-eyebrow { color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .node-status { flex: 0 0 auto; border: 1px solid currentColor; border-radius: 999px; padding: 3px 6px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
 .node-status.tone-green { color: var(--green); }
@@ -92,8 +92,8 @@ button:hover { border-color: var(--blue); background: var(--blue-soft); transfor
 .node-status.tone-blue { color: var(--blue); }
 .node-content { display: grid; gap: 10px; padding: 12px 14px; }
 .node-line > span { color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .11em; }
-.node-line p { margin: 2px 0 0; font-size: 11px; line-height: 1.45; }
-.node-footer { padding: 9px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1.45; }
+.node-line p { margin: 2px 0 0; font-size: 11px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.node-footer { padding: 9px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .node-handle { width: 8px !important; height: 8px !important; border: 2px solid var(--canvas) !important; background: var(--line-bright) !important; pointer-events: none !important; }
 .node-toolbar { border: 1px solid var(--line-bright); border-radius: 6px; background: var(--panel-raised); color: var(--muted); padding: 5px 8px; font-size: 9px; }
 .react-flow__node.selected .workflow-node { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(120,201,232,.14), 0 18px 48px rgba(0,0,0,.38); }

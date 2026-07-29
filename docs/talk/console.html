@@ -295,13 +295,26 @@
     <div class="block">
       <h2>Seven skills — one per step</h2>
       <ul class="defs">
-        <li><span class="term">discovery-interview</span><span class="desc">Interviews the request into a real goal — and a person ratifies it.</span></li>
-        <li><span class="term">shape-strategy</span><span class="desc">Frames the bounded bet: appetite, the smallest real slice, non-goals, risks.</span></li>
-        <li><span class="term">plan-feature</span><span class="desc">Writes the plan and the <b>proof plan</b> — how each requirement will be tested.</span></li>
-        <li><span class="term">review-planning <span class="rev">· Codex</span></span><span class="desc">A different AI reviews the shape + plan before any code. Admits it, or holds it.</span></li>
-        <li><span class="term">implement-feature</span><span class="desc">Builds against the frozen requirements — it can't quietly change them.</span></li>
-        <li><span class="term">review-invariants <span class="rev">· Codex</span></span><span class="desc">A different AI reviews the code, bounded to the three passes above.</span></li>
-        <li><span class="term">orchestrate-delivery</span><span class="desc">Runs the whole thing as three roles: a driver, isolated build workers, and the independent Codex reviewer.</span></li>
+        <li><span class="term">discovery-interview</span><span class="desc">Asks a fixed set of premise questions — who it's for, how big, the smallest real slice, what's explicitly out, the success signal, who owns the call — and records the answers <b>verbatim</b>. The agent is barred from approving; a person signs it off. It's the one step the agent can't do for you.</span></li>
+        <li><span class="term">shape-strategy</span><span class="desc">Turns the approved premise into a bounded bet: appetite, the smallest slice that proves it works, explicit non-goals, and risks-with-mitigations it finds by reading the repo. It won't let a missing backend quietly redefine “send” into “simulate.”</span></li>
+        <li><span class="term">plan-feature</span><span class="desc">Writes the <b>behavior contract</b> — the enforced requirements — and a <b>proof plan</b> naming how each one gets tested (in-process, wired, or a real live run). Those requirements then freeze: they're the acceptance surface everything after is measured against.</span></li>
+        <li><span class="term">review-planning <span class="rev">· Codex</span></span><span class="desc">A different AI, in a throwaway checkout, reviews the shape + plan <b>before any code exists</b>. It can add requirements (here it added the entire authorization behavior), catch design bugs on paper — like a mutating unsubscribe link a spam filter would trip — and either admit the build or hold it with findings.</span></li>
+        <li><span class="term">implement-feature</span><span class="desc">Builds against the frozen requirements — and writes each test <b>first</b>, proving it fails (red) before the code exists, so a test can't pass vacuously. It can't change the contract; a real conflict goes back as a question, not a quiet edit.</span></li>
+        <li><span class="term">review-invariants <span class="rev">· Codex</span></span><span class="desc">A different AI reviews the finished code against the frozen contract, in a checkout pinned to the exact commit, recording its own findings and verdict over MCP. Bounded to three passes — comprehensive, repair-check, decision — and no more.</span></li>
+        <li><span class="term">orchestrate-delivery</span><span class="desc">Runs the whole thing as three separated roles so no context grades its own work: a <b>driver</b> that holds state, <b>isolated build workers</b> each in their own git worktree, and the independent <b>Codex reviewer</b>. The frozen contract is the only thing passed between them.</span></li>
+      </ul>
+    </div>
+
+    <div class="block">
+      <h2>How a build actually runs — more than “a skill + the requirements”</h2>
+      <p class="blurb">Implementation isn't one agent freewheeling with a checklist. The orchestrator hands each build worker only its slice, in isolation, and the worker has to <em>prove</em> its work — it can't just say it's done.</p>
+      <ul class="defs">
+        <li><span class="term">the handoff</span><span class="desc">Each worker gets the issue, <b>its slice of the frozen requirements</b> (verbatim), and the proof plan — and nothing about the other work.</span></li>
+        <li><span class="term">isolated</span><span class="desc">It runs in its own throwaway <b>git worktree</b>, so parallel workers can't collide or overwrite each other.</span></li>
+        <li><span class="term">test first · red</span><span class="desc">It writes the test <b>before</b> the code and proves it <b>fails</b> against the current tree — so the test is real, not a fake that always passes.</span></li>
+        <li><span class="term">then build · green</span><span class="desc">It implements, then <code>prove</code> runs the test and the <b>exit code</b> is the verdict. The worker never types “pass.”</span></li>
+        <li><span class="term">can't drift</span><span class="desc">It can't change the requirements. A genuine conflict goes back to the orchestrator as a <b>question</b>, not a quiet edit.</span></li>
+        <li><span class="term">merge + verify</span><span class="desc">The orchestrator merges the worktrees and records the integration proof — and <b>never records a verdict for code it wrote itself</b>.</span></li>
       </ul>
     </div>
 
