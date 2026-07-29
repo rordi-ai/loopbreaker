@@ -238,6 +238,8 @@
   .map .m { font-family: var(--font-mono); font-size: .78rem; display: inline-flex; gap: 8px; align-items: baseline; }
   .map .mk { color: var(--faint); text-transform: uppercase; letter-spacing: .06em; font-size: .66rem; }
   .map .mv { color: var(--accent); } .map .mv.hook { color: var(--amber); } .map .mv.none { color: var(--warn); }
+  .st-schema { font-family: var(--font-mono); font-size: .75rem; color: var(--muted); margin-top: 11px; padding: 9px 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); overflow-x: auto; white-space: nowrap; }
+  .st-schema .tbl { color: var(--accent); } .st-schema .hl { color: var(--good); }
 </style>
 </head>
 <body>
@@ -272,6 +274,8 @@
       <span class="s-item">installs as a <b>Claude Code + Codex plugin</b></span>
     </div>
 
+    <p class="expand-note" style="margin-top:14px">Each step records into a SQLite table &mdash; shown in mono under it. The <span style="color:var(--good)">green</span> columns are <code>CHECK</code> constraints: the rules live in the schema, not in convention. <code>pass_number BETWEEN 1 AND 3</code> is literally &ldquo;no pass four,&rdquo; and <code>verdict(pass|fail|not_run)</code> makes a missing proof its own state &mdash; absence is never a pass.</p>
+
     <div class="flowline">
       <div class="stg" data-n="▸">
         <h3>It starts with a prompt <span class="who">one session</span></h3>
@@ -289,6 +293,7 @@
           <span class="m"><span class="mk">skill</span><span class="mv">discovery-interview</span></span>
           <span class="m"><span class="mk">writes</span><span class="mv">discovery_record &middot; loopbreaker discover</span></span>
         </div>
+        <div class="st-schema"><span class="tbl">discovery_answers</span> issue_id &middot; field &middot; question &middot; answer &nbsp;&nbsp; <span class="tbl">discovery_records</span> status: <span class="hl">draft</span></div>
       </div>
 
       <div class="stg human" data-n="2">
@@ -298,6 +303,7 @@
           <span class="m"><span class="mk">surface</span><span class="mv">the app &mdash; &ldquo;Needs you&rdquo; / inbox</span></span>
           <span class="m"><span class="mk">tool</span><span class="mv none">no loopbreaker call for this &mdash; only the app</span></span>
         </div>
+        <div class="st-schema"><span class="tbl">discovery_records</span> status: <span class="hl">draft &rarr; approved</span> &middot; <span class="hl">approved_by</span> &middot; approved_at</div>
       </div>
 
       <div class="stg" data-n="3">
@@ -308,6 +314,7 @@
           <span class="m"><span class="mk">writes</span><span class="mv">shape_record &middot; planning_record</span></span>
           <span class="m"><span class="mk">hook</span><span class="mv hook">PreToolUse &rarr; admission &mdash; denies edits, reply is the active gate</span></span>
         </div>
+        <div class="st-schema"><span class="tbl">shape_assessments</span> profile_json &nbsp; <span class="tbl">planning_profiles</span> profile_json &nbsp; <span class="tbl">behaviors</span> trigger &middot; expected &middot; verify &middot; <span class="hl">status(pending|verified|failed|waived)</span> &middot; enforced</div>
       </div>
 
       <div class="stg codex" data-n="4">
@@ -318,6 +325,7 @@
           <span class="m"><span class="mk">writes</span><span class="mv">planning_review_record_pass &middot; _upsert_finding</span></span>
           <span class="m"><span class="mk">gate</span><span class="mv hook">admission opens on approval</span></span>
         </div>
+        <div class="st-schema"><span class="tbl">planning_review_passes</span> <span class="hl">pass_number 1&ndash;3</span> &middot; verdict(approved|changes_required|&hellip;) &nbsp; <span class="tbl">planning_findings</span> severity(P0&ndash;P3) &middot; status &middot; smallest_fix</div>
       </div>
 
       <div class="stg" data-n="5">
@@ -328,6 +336,7 @@
           <span class="m"><span class="mk">runs</span><span class="mv">loopbreaker prove &middot; bind</span></span>
           <span class="m"><span class="mk">hook</span><span class="mv hook">PreToolUse now allows edits &mdash; issue admitted</span></span>
         </div>
+        <div class="st-schema"><span class="tbl">evidence</span> behavior_id &middot; <span class="hl">tier(unit|wired|live)</span> &middot; <span class="hl">verdict(pass|fail|not_run)</span> &middot; source</div>
       </div>
 
       <div class="stg codex" data-n="6">
@@ -350,6 +359,7 @@
           <span class="m"><span class="mk">writes</span><span class="mv">review_record_pass &middot; _upsert_finding &middot; review_record_evidence</span></span>
           <span class="m"><span class="mk">reopen</span><span class="mv hook">loopbreaker review-round (human)</span></span>
         </div>
+        <div class="st-schema"><span class="tbl">review_passes</span> round &middot; <span class="hl">pass_number 1&ndash;3</span> &middot; verdict(pass|fail) &nbsp; <span class="tbl">findings</span> severity &middot; status(open|repaired|accepted_debt) &middot; smallest_fix</div>
       </div>
 
       <div class="stg" data-n="7">
@@ -359,24 +369,6 @@
           <span class="m"><span class="mk">reads</span><span class="mv">review_ship_status &middot; loopbreaker readiness</span></span>
         </div>
       </div>
-    </div>
-
-    <div class="block">
-      <h2>How it's recorded — the data model</h2>
-      <p class="blurb">Every step above writes to one of these tables in the SQLite file. And the rules aren't conventions bolted on afterward — they're <b>CHECK constraints in the schema itself</b>, so a row that would break a rule simply can't be written.</p>
-      <pre><span class="kw">issues</span>              id &middot; title &middot; description
-<span class="kw">discovery_records</span>   issue_id &middot; <span class="goodt">status(draft|approved)</span> &middot; <span class="goodt">approved_by</span> &middot; approved_at   <span class="cm">&larr; the human sign-off, recorded</span>
-<span class="kw">discovery_answers</span>   issue_id &middot; field &middot; question &middot; answer                        <span class="cm">&larr; the interview, verbatim</span>
-<span class="kw">shape_assessments</span>   issue_id &middot; profile_json                                     <span class="cm">&larr; the bounded bet</span>
-<span class="kw">planning_profiles</span>   issue_id &middot; profile_json                                     <span class="cm">&larr; the plan + proof plan</span>
-<span class="kw">behaviors</span>           id &middot; issue_id &middot; title &middot; trigger &middot; expected &middot; verify
-                    &middot; <span class="goodt">status(pending|verified|failed|waived)</span> &middot; enforced   <span class="cm">&larr; the frozen requirements</span>
-<span class="kw">planning_review_passes</span>  <span class="goodt">pass_number CHECK BETWEEN 1 AND 3</span> &middot; verdict(approved|changes_required|…)
-<span class="kw">review_passes</span>       round &middot; <span class="goodt">pass_number CHECK BETWEEN 1 AND 3</span> &middot; verdict(pass|fail)   <span class="cm">&larr; &ldquo;no pass four&rdquo; is a DB constraint</span>
-<span class="kw">findings</span>            severity(P0-P3) &middot; status(open|repaired|accepted_debt) &middot; smallest_fix
-<span class="kw">evidence</span>            behavior_id &middot; <span class="goodt">tier(unit|wired|live)</span> &middot; <span class="goodt">verdict(pass|fail|not_run)</span> &middot; source   <span class="cm">&larr; not_run: absence &ne; a pass</span>
-<span class="kw">waivers</span>             behavior_id &middot; rationale &middot; <span class="goodt">approved_by</span></pre>
-      <p class="expand-note">Read the constraints and the rules are right there: <code>pass_number BETWEEN 1 AND 3</code> is literally &ldquo;no pass four.&rdquo; <code>verdict IN ('pass','fail','not_run')</code> makes an unrun proof its own state &mdash; absence is never a pass. A discovery record can't reach <code>approved</code> without a name in <code>approved_by</code>. The rules live where the data does.</p>
     </div>
 
     <p class="expand-note" style="margin-top:24px">It's all one session &mdash; <code>orchestrate-delivery</code> runs the roles so no context grades its own work. And every call above writes <b>one row</b> to that single SQLite file. The live graph in the next tab isn't a picture <em>of</em> this &mdash; it <b>is</b> this, drawn.</p>
