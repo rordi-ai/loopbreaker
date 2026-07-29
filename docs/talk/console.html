@@ -343,6 +343,7 @@
     <p class="eyebrow" style="margin-bottom:6px">The real app · live over WebSocket · one feature, all the way to ship</p>
     <h1 class="view-h" style="font-size:clamp(1.3rem,2.3vw,1.65rem)">The review graph, straight from the running tool<span style="color:var(--muted);font-weight:400;font-size:.82em"> — zoom, pan, click a node</span></h1>
     <div class="graph-frame" id="graphFrame">
+      <button class="fs-btn" id="fsBtn" type="button">⛶ Full screen</button>
       <iframe src="https://acfs-dev.tail063234.ts.net:8448/" title="Live loopbreaker review graph — MKTG-EMAIL-1" loading="lazy" allow="fullscreen" allowfullscreen></iframe>
     </div>
     <p class="hint">Live from the loopbreaker app itself. If the frame is blank, the app process is down — relaunch it.</p>
@@ -352,13 +353,14 @@
   <section data-view="compare">
     <p class="eyebrow">Same AI model · same starting code</p>
     <h1 class="view-h">The same AI, with and without the process</h1>
-    <p class="view-sub">Both runs got the exact same one-line request and the same repo. The only difference is whether this quality process was switched on.</p>
+    <p class="view-sub">Both runs got the exact same one-line request and the same repo. The only difference is whether this quality process was on. Follow it in three steps — the goal, the build, the review.</p>
 
     <div class="shared-input">
       <span class="si-label">The request — given to both, in full</span>
       <span class="si-text">“Add a way to design and send a marketing email from the dashboard.”</span>
     </div>
 
+    <p class="snip-label section-label">Step 1 · the goal each one aimed at</p>
     <div class="expand-row">
       <div class="expand-col without">
         <p class="snip-label">Without — it just runs with the one line</p>
@@ -375,7 +377,7 @@
       </div>
     </div>
 
-    <p class="snip-label section-label">Then — the code each one actually shipped</p>
+    <p class="snip-label section-label">Step 2 · what each one actually built</p>
     <div class="compare">
       <div class="armcol">
         <div class="armhead a">
@@ -424,20 +426,7 @@
       </div>
     </div>
 
-    <div class="scorecard">
-      <table>
-        <thead><tr><th>&nbsp;</th><th>Without the process</th><th>With it</th></tr></thead>
-        <tbody>
-          <tr><td>the goal</td><td><span class="a">guessed — campaigns + analytics, not asked for</span></td><td><span class="b">pinned down with a person first</span></td></tr>
-          <tr><td>its data</td><td><span class="a">fake, in-memory</span></td><td><span class="b">a real record, saved before anything sends</span></td></tr>
-          <tr><td>sending</td><td><span class="a">simulated by default</span></td><td><span class="b">real, one message per recipient</span></td></tr>
-          <tr><td>tested?</td><td><span class="a">no tests at all</span></td><td><span class="b">9 requirements, each with a test that runs</span></td></tr>
-          <tr><td>reviewed?</td><td><span class="a">no one — said “done”</span></td><td><span class="b">a 2nd AI; it failed a round, caught 2 bugs the raw run can't even hit</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <p class="snip-label section-label">What review actually caught</p>
+    <p class="snip-label section-label">Step 3 · what the review caught — the part only structure produces</p>
     <div class="compare">
       <div class="armcol">
         <div class="armhead a">
@@ -497,6 +486,23 @@
       var h = location.hash.slice(1);
       if (order.indexOf(h) >= 0) show(h);
     });
+    var fsBtn = document.getElementById('fsBtn');
+    var graphFrame = document.getElementById('graphFrame');
+    if (fsBtn && graphFrame) {
+      fsBtn.addEventListener('click', function () {
+        var req = graphFrame.requestFullscreen || graphFrame.webkitRequestFullscreen;
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+          (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        } else if (req) {
+          var r = req.call(graphFrame);
+          if (r && r.catch) r.catch(function () {});
+        }
+      });
+      document.addEventListener('fullscreenchange', function () {
+        fsBtn.textContent = document.fullscreenElement ? '✕ Exit full screen' : '⛶ Full screen';
+      });
+    }
+
     var initial = location.hash.slice(1);
     show(order.indexOf(initial) >= 0 ? initial : 'pipeline');
   })();
